@@ -273,6 +273,69 @@ buffering in `src/log-d678.c` before any capture run.
 Note also `[MPU] FIXME: no MPU button codes for 6D2` — that will block GUI
 navigation later even once boot completes, so it needs doing regardless.
 
+### UPDATE 2026-08-15 — the 1521 assert is SOLVED and the loop is partly broken
+
+**Empirically confirmed by a live gdb run, not inferred.** The EstimatedSize
+assert is cleared and boot advances **223 → 2882 log lines (~13x)**.
+
+Root cause, proven: `GetEstimatedSize()` at `0xE0202312` loads a frame-rate field
+(fps x100) via `ldr r0,[r6,#8]` at `0xE0202372` and switches on it against exactly
+eight legal values — `2000 2398 2400 2500 2997 5000 5994 11988` — falling through
+to `ASSERT(FALSE)` at `0xE0202480`. Under generic MPU spells that field holds
+**81** (`0x51`). Predicted before the run, then observed 14x:
+
+    ESTSIZE_HIT rate=81 -> forcing 2000
+
+200D's `patches.gdb` records the identical value ("strange values passed in, 0x51").
+
+Fix (in `cam_config/6D2/debugmsg.gdb`), the same form 77D/750D already ship —
+break AFTER the load, since breaking at function entry gets clobbered by it:
+
+    b *0xE0202374
+    commands
+      silent
+      set $r0 = 0x7D0
+      c
+    end
+
+`GetEstimatedSize` now returns instead of asserting; only a non-fatal
+`[RSC] ERROR GetEstimatedSizeOfMovie NOT Exist` remains.
+
+**This qualifies the "cannot break the loop inside QEMU" claim above.** The assert
+is bypassable in QEMU without real-body spells. Boot does NOT complete
+(`startupInitializeComplete` still absent), but it runs ~13x longer with MPU
+traffic continuing — so a capture run under this breakpoint should yield far more
+than the ~28 messages that truncation allowed. Worth retrying the capture pipeline
+under it before committing to a real-body capture.
+
+**NEW WALL — this is where QEMU now stops:**
+
+    398: [STARTUP] ERROR WaitPU1 TimeOut
+    ASSERT : SystemIF::KerRLock.c, Task = ShtCap, Line 205
+    [STARTUP] ERROR ASSERT : Core 1
+
+A different failure entirely: the firmware waits on **PU1** (second processing
+unit), times out, and the ShtCap (shot-capture) task asserts on a kernel resource
+lock on Core 1. Strong lead — upstream already stubs this class of hang on
+siblings: 750D's `patches.gdb` has *"startupPrepareCapture: pretend OmarInit was
+completed"* (`set *(int*)0xFE0CF88E = 0x4770`), and 200D's has commented-out
+`SHT_CAPTURE_PATH_InitializeCapturePath` and `startupPrepareDevelop` stubs.
+
+**Test-harness traps (cost 3 failed runs, all harness not diagnosis):**
+
+- gdb must run from `cam_config/`, not `magiclantern/` — `source debug-logging.gdb`
+  is resolved relative to cwd.
+- Do NOT pass `-ex "target remote localhost:1234"`: `debug-logging.gdb:18` connects
+  itself, and the second connect resets the first.
+- The full `debugmsg.gdb` chain dies early on a stray SIGTRAP at `0xdf00a5d4`
+  during `CreateStateObject`, long before RscMgr; `-batch` then detaches and QEMU
+  runs uninstrumented, producing a log that looks exactly like "the fix failed".
+  Use a minimal script with only the needed breakpoints.
+- **QEMU serial logs contain a NUL byte**, so plain `grep` treats them as binary,
+  prints nothing and exits 1 — indistinguishable from a genuine no-match. Always
+  use `LC_ALL=C grep -a` on these logs. This produced one false "assert is gone"
+  claim that happened to be right for the wrong reason.
+
 ### Phase B — establish what is missing and why
 6. Enumerate current 6D2 feature state from source, not from forum folklore:
    grep `platform/6D2.*/` for `CONFIG_*` flags, compare against a mature cam

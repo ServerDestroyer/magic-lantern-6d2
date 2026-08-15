@@ -1,0 +1,76 @@
+diff --git a/platform/6D2.111/consts.h b/platform/6D2.111/consts.h
+index 549265807..2384a5f9b 100644
+--- a/platform/6D2.111/consts.h
++++ b/platform/6D2.111/consts.h
+@@ -131,6 +131,16 @@ extern int winsys_bmp_dirty_bit_neg;
+ //#define MVR_LAST_FRAME_SIZE (*(int*)(512 + MVR_752_STRUCT))
+ #define MVR_BYTES_WRITTEN MEM((212 + MVR_190_STRUCT))
+ 
++// Recording time limits, in ms, in a literal pool in ROM0.
++// Both are read by a two-armed getter at 0xe042fee8: the beq at 0xe042fef0
++// selects normal vs high FPS, and each arm is an "ldr r0, [pc, #128]".
++// Located by searching ROM0 for 1799000 (29m59s) and 449000 (7m29s): each byte
++// pattern occurs exactly once in the whole 32MB image, adjacent and in this
++// order, so there is no competing candidate. Verified by decoding both literal
++// loads and confirming their computed targets.
++#define MVR_TIME_LIMIT_NORMAL_FPS 0xe042ff74
++#define MVR_TIME_LIMIT_HIGH_FPS 0xe042ff78
++
+ 
+ // SJE new stuff added after we have ML menus working!
+ // Not needed for early code.
+diff --git a/platform/6D2.111/features.h b/platform/6D2.111/features.h
+index 14675860b..5e78e24a9 100644
+--- a/platform/6D2.111/features.h
++++ b/platform/6D2.111/features.h
+@@ -36,4 +36,15 @@
+ 
+ #define CONFIG_AUTOBACKUP_ROM
+ 
++// We are able to override the MOV / MP4 29:59 limit
++// (needs MVR_TIME_LIMIT_NORMAL_FPS / MVR_TIME_LIMIT_HIGH_FPS in consts.h)
++#define FEATURE_OVERRIDE_MOVIE_30_MIN_LIMIT
++
++// Debug displays. On for both D7 siblings (200D, 77D) and 10 other modern
++// ports. FEATURE_SHOW_GUI_EVENTS is also the quickest way to learn this
++// body's GUI event codes, which several unported features need.
++#define FEATURE_SHOW_TASKS
++#define FEATURE_SHOW_CPU_USAGE
++#define FEATURE_SHOW_GUI_EVENTS
++
+ #undef CONFIG_ADDITIONAL_VERSION
+diff --git a/platform/6D2.111/internals.h b/platform/6D2.111/internals.h
+index 2b5b800f6..b71d4d6a3 100644
+--- a/platform/6D2.111/internals.h
++++ b/platform/6D2.111/internals.h
+@@ -1,5 +1,5 @@
+ /**
+- * Camera internals for 6D2 1.0.5
++ * Camera internals for 6D2 1.1.1
+  */
+ 
+ /** This camera has a DIGIC VII chip */
+diff --git a/platform/6D2.111/stubs.S b/platform/6D2.111/stubs.S
+index d47f100e4..ccda485a9 100644
+--- a/platform/6D2.111/stubs.S
++++ b/platform/6D2.111/stubs.S
+@@ -77,7 +77,7 @@ THUMB_FN(0xe01e565e,  dma_memcpy)
+ // This is the minimal required to support raw video, using mem_to_mem_edmac_copy()
+ THUMB_FN(0xe04aa70c,  CreateResLockEntry) // via xrefs to a pointer to "ResInfo"
+ THUMB_FN(0xe04aa7f0,  DeleteResLockEntry)
+-THUMB_FN(0xe04aa8f4,  LockEngineResources)
++THUMB_FN(0xe04aa8f4,  LockEngineResources) // Down a bit from CreateResLockEntry, starts very similar but ends differently (see 0xe016a0ea)
+ THUMB_FN(0xe04aa994,  UnLockEngineResources)
+ THUMB_FN(0x30900, shamem_read) // nearly always inlined, so very few refs.
+                                // Can find via "[MEM1DEV] Addr=%#x Data=%#x"
+@@ -230,8 +230,8 @@ THUMB_FN(0xdf00b67d,  CreateRecursiveLock) // via "KerRLock.c", CRL() calls a fu
+ THUMB_FN(0xdf00b451,  AcquireRecursiveLock)
+ THUMB_FN(0xdf00b51b,  ReleaseRecursiveLock)
+ THUMB_FN(0xe04db118,  dialog_redraw) // Found via checking xrefs to "pDialog->pSignature == pcSignature"
+-THUMB_FN(0xe04aa70c,  CreateResLockEntry) // via xrefs to a pointer to "ResInfo"
+-THUMB_FN(0xe04aa8f4,  LockEngineResources) //  Down a bit from CreateResLockEntry, start v similar but end is different. (see 0xe016a0ea)
++// CreateResLockEntry and LockEngineResources were also defined here, with the
++// same addresses as the EDMAC block above. Removed as redundant.
+ THUMB_FN(0xe076bd64,  ErrForCamera_handler) // ERR70, ERR80 etc (DlgErrForCamera.c, AJ_DIALOG.HANDLER_DlgErrForCamera.c)
+ 
+ //THUMB_FN(0xdf00d365,  fsuDecodePartitionTable) // SJE FIXME wrong - this function doesn't exist on 6D2.  See longer notes in 200D stubs.S.
