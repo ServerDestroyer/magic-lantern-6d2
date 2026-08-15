@@ -267,10 +267,22 @@ What actually works, in order of effort:
    post there — useful as a workspace, not as a window into ML's server.
 4. **Ask directly, as yourself.** I draft the message, you send it.
 
-Who to ask (refine from `git log` in step 6, don't guess):
-- `reticulatedpines` — maintainer, owns the D67 port and the release list.
-- `WalterSchulz` — builds/testing/user support, drove the "clean HDMI" wish.
-- Whoever last touched `platform/6D2.*` and the 200D raw video commits.
+Who to ask — **corrected 2026-08-15 from `git log`, not from guessing.** The
+earlier list in this section was wrong on two counts:
+
+- **`reticulatedpines` = `stephen-e`.** Same person: `git log --format='%an <%ae>'`
+  shows both names sharing one GitHub noreply address. He authored 34 of the 37
+  commits touching `platform/6D2.*`. He is the correct and essentially only
+  contact for the D67 port.
+- **`WalterSchulz` has touched nothing 6D2-specific.** His only commits in three
+  years are DXO dynamic-range data in `src/raw.c` for the R5 and 80D. He is a
+  testing/support voice on the forum, not a code owner here — do not route
+  technical 6D2 questions to him.
+- **Issue #221 was opened by `evgeniimv`** (2025-08-31), not WalterSchulz.
+  WalterSchulz's "clean HDMI is the top wish" remark is in issue **#155**, which
+  motivated #221.
+- For the MOV time limit specifically, the reference implementation is the
+  **200D** (`platform/200D.101`), authored by the same maintainer.
 
 ## 4. Definition of done for this plan's first milestone
 - QEMU boots stock 6D2 firmware **and** our ML build.
