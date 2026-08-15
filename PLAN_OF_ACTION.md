@@ -216,30 +216,62 @@ Stock 6D2 firmware, no ML. The rig works; the firmware stops at a Canon assert.
 
 Both Cortex-A9 cores come up (SGI exchange between CPU0/CPU1 is present).
 
-**Stops here:**
+**Assert reached:**
 
-    [FSU] AllocateMemoryStrictly For Speed Class!!!
     ASSERT : Resource/./EstimatedSize.c, Task = RscMgr, Line 1521
-    [STARTUP] ERROR ASSERT : Resource/./EstimatedSize.c, Task = RscMgr
-    [STARTUP] ERROR ASSERT : Line 1521 / FALSE
 
-This matches `platform/6D2.111/README.txt` ("boots in qemu, but qemu doesn't get
-far for 6D2") — but now with an exact failure point instead of folklore.
+### RESOLVED 2026-08-15 by spike 001 — root cause is missing MPU spells
 
-**Leads, in priority order:**
+Everything below this line supersedes the original guesswork. Two corrections to
+what this section used to claim:
 
-1. The assert is in the resource manager's size estimation, immediately after the
-   filesystem unit does a **speed-class** allocation for the emulated SD card.
-   Suspect the emulated card geometry: 247 MB is small and QEMU-synthesised.
-   Cheapest experiment: vary the card image size/geometry and see if the assert
-   moves or clears.
-2. Earlier warnings likely related, worth ruling in/out first:
-   `[SDIO] Error` (x4), `[TA10] ERROR Irregular TotalSheets 0 !!`.
-3. qemu-eos prints two known gaps for this model at startup —
-   `[MPU] FIXME: using generic MPU spells for 6D2.` and
-   `[MPU] FIXME: no MPU button codes for 6D2.` The missing button codes will
-   block GUI navigation later even once boot completes, so they need doing
-   regardless.
+**1. The firmware does not halt.** It continues ~30 more messages and completes
+startup in an error state via Canon's `startupErrorRequestChangeCBR` →
+`ErrorSend (101, ABORT)` → `startupCompleteCallback`. The old "stops here"
+reading was an artefact of watching only the serial log; use `-d debugmsg`.
+Later boot stages are reachable in principle.
+
+**2. The SD card is not the cause.** Eight configurations tested — 248 MiB
+through 32 GiB containers, freshly built FAT16 and FAT32 filesystems, an
+unformatted card, and **no SD drive at all**. The assert is byte-identical in
+every case. It fires with no card in the machine, so card geometry cannot be
+responsible. The FSU speed-class parameters genuinely respond to the filesystem
+(`Attach SC 1 0 80 20 248` → `1 0 200 80 2044`), which proves the knob was
+really being turned.
+
+**Actual root cause**, read out of ROM0 and confirmed live in gdb: the code at
+`0xE0202480` is a switch-with-no-default over a frame rate in hundredths of fps.
+Accepted set `{2000, 2398, 2400, 2500, 2997, 5000, 5994, 11988}` = 20 / 23.98 /
+24 / 25 / 29.97 / 50 / 59.94 / 119.88 fps. Observed value at the breakpoint:
+**81** — garbage. The record being dereferenced holds DIGIC 6/7 property IDs
+(`0x8000003B`, `0x8000003F`), so it is not a movie-format descriptor at all.
+
+The video-format record is never populated because **qemu-eos has no 6D2 MPU
+spells** and falls back to generic ones. `[TA10] ERROR Irregular TotalSheets 0`
+is the same defect surfacing elsewhere — an all-zero `PROP_AVAIL_SHOT` payload.
+`[SDIO] Error` ×4 is benign: CMD0 never returns a response by design, and
+CMD52/CMD5 are SDIO-only probes a plain memory card correctly ignores.
+
+**This promotes `[MPU] FIXME: using generic MPU spells for 6D2` from a footnote
+to THE blocker for QEMU work.** See the MPU-spell capture note below.
+
+### The MPU-spell circular dependency
+
+Two independent investigations converged on this from opposite directions, so
+state it plainly:
+
+- Spike 001: the QEMU boot assert is caused by missing 6D2 MPU spells.
+- The MPU-spell capture pipeline (`capture_mpu_spells.md`) is blocked because
+  QEMU boot truncates at that same assert, yielding only ~28 MPU messages.
+
+**You cannot break this loop inside QEMU.** The spells must be captured from the
+real body, which is exactly what the capture pipeline is for. Its own blocker is
+a logging bug — MPU send/recv lines reach the QEMU console but not the card-side
+`DEBUGMSG.LOG`, and on real hardware only the card file exists. Root-cause that
+buffering in `src/log-d678.c` before any capture run.
+
+Note also `[MPU] FIXME: no MPU button codes for 6D2` — that will block GUI
+navigation later even once boot completes, so it needs doing regardless.
 
 ### Phase B — establish what is missing and why
 6. Enumerate current 6D2 feature state from source, not from forum folklore:

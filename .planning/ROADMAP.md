@@ -16,8 +16,20 @@ This file is the status ledger: what is done, what is in flight, what is next.
 | 1 | ARM toolchain + deps | **DONE** | `shell.nix` (project-local, deliberately not in the NixOS system config) |
 | 2 | Build ML for 6D2 | **DONE** | `ml/platform/6D2.111/build/autoexec.bin`, 243 KB, 1296 symbols in `6D2_111.sym`, built 2026-08-15 12:11 |
 | 3 | Dump ROMs from camera | **DONE** | `roms/6D2/{ROM0,ROM1}.BIN`, dumped 2025-09-29, verified genuine |
-| 4 | qemu-eos boots stock firmware | **PARTIAL** | Boots to `K406 ICU Firmware Version 1.1.1`, halts at `ASSERT : Resource/./EstimatedSize.c, Task = RscMgr, Line 1521` → spike 001 |
-| 5 | Boot our ML build in QEMU | **IN FLIGHT** | Unblocked by step 2 being complete → spike 004 |
+| 4 | qemu-eos boots stock firmware | **PARTIAL — root cause known** | Firmware does *not* halt; it completes startup via `ErrorSend (101, ABORT)`. The `RscMgr` assert is a switch-with-no-default over frame rate receiving 81 (garbage) because qemu-eos has **no 6D2 MPU spells**. Not the SD card — assert fires with no card at all. → spike 001 |
+| 5 | Boot our ML build in QEMU | **DONE — ML boots** | `autoexec.bin` loads (`File size : 0x3BA40` = our exact byte count), `boot-d678.c` relocation works, ML prints its own banner from `boot_post_init_task`. Fails just after: both cores spin at `0x001037A8`/`0x0010390C` inside ML's relocated image. → spike 004 |
+
+### The blocker, stated once
+
+QEMU cannot boot the 6D2 far enough to be a debug rig until qemu-eos has **6D2
+MPU spells**, and those spells cannot be captured in QEMU because boot truncates
+at the very assert they would fix. The loop only breaks by capturing from the
+real body — see `capture_mpu_spells.md`, whose own blocker is a log-buffering bug
+in `src/log-d678.c` (MPU lines reach the QEMU console but not the card-side
+`DEBUGMSG.LOG`, and on hardware only the card file exists).
+
+Note this does **not** block Phase C's MOV time-limit patch, which is verifiable
+directly on the body and cannot brick anything.
 
 ## Phase B — establish what is missing and why
 
