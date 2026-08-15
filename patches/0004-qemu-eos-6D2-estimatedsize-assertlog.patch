@@ -1,0 +1,52 @@
+diff --git a/magiclantern/cam_config/6D2/debugmsg.gdb b/magiclantern/cam_config/6D2/debugmsg.gdb
+index dd5d9ba33a..ffd7072a0f 100644
+--- a/magiclantern/cam_config/6D2/debugmsg.gdb
++++ b/magiclantern/cam_config/6D2/debugmsg.gdb
+@@ -20,7 +20,14 @@ macro define NUM_CORES 2
+ b *0xDF008CE6
+ task_create_log
+ 
+-b *0xE06170EC
++# FIXED 2026-08-15: was 0xE06170EC, which is NOT the assert handler — it lands
++# mid-instruction inside AES S-box lookup code (ubfx/ldrb-from-table/lsls/orr at
++# 0xE06170E0-0xE06170FE). Nothing was ever assert-logged on this cam.
++# The real handler is 0xE0617620: standard prologue, loads the handler pointer
++# stored at 0x4000, then tail-calls it (bx r3). Signature is
++# assert(r0 = expr string, r1 = file string, r2 = line number) — confirmed by the
++# call site at 0xE020248C which sets r2=1521 and ADRs the two strings.
++b *0xE0617620
+ assert_log
+ 
+ b *0xDF008284
+@@ -38,4 +45,31 @@ mpu_send_log
+ b *0xE0644786
+ mpu_recv_log
+ 
++# EstimatedSize — supply a legal frame rate (0x7D0 = 2000 = 20.00fps)
++#
++# GetEstimatedSize() at 0xE0202312 reads a frame-rate field (fps x100) and
++# switches on it against exactly eight legal values:
++#   2000 2398 2400 2500 2997 5000 5994 11988
++# Under QEMU the generic MPU spell set never sends the Movie-group init reply,
++# so PROP_MOVIE_PARAM keeps its power-on default and the field stays 81 (0x51).
++# No case matches, the default arm runs, and boot dies at
++#   ASSERT(FALSE) "Resource/./EstimatedSize.c" line 1521, task RscMgr.
++# 200D's patches.gdb hits the identical value: "strange values passed in, 0x51".
++#
++# Breakpoint is placed AFTER the load, not at function entry:
++#   e0202372:  ldr   r0, [r6, #8]   <- reads the field; would clobber an entry patch
++#   e0202374:  movs  r7, #4         <- BREAK HERE (r7/sl writes don't touch r0)
++#   e020237a:  cmp.w r0, #2000
++# Same register-patch form 77D/750D already use.
++#
++# Emulation workaround only — changes nothing on the camera.
++b *0xE0202374
++commands
++  silent
++  print_current_location
++  printf "EstimatedSize: frame rate %d -> forcing 2000\n", $r0
++  set $r0 = 0x7D0
++  c
++end
++
+ cont

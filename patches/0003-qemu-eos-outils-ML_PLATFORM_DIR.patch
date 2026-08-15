@@ -1,0 +1,13 @@
+diff --git a/hw/eos/mpu_spells/outils.py b/hw/eos/mpu_spells/outils.py
+index fd2a5b418a..023d1f0957 100644
+--- a/hw/eos/mpu_spells/outils.py
++++ b/hw/eos/mpu_spells/outils.py
+@@ -12,7 +12,7 @@ def getLongLE(d, a):
+ # button names from gui.h
+ def get_switch_names(camera_model):
+     switch_names = {}
+-    ml_dir = "../../../../../magic-lantern/platform/"
++    ml_dir = os.environ.get("ML_PLATFORM_DIR", "../../../../../magic-lantern/platform/")
+     
+     # pick one platform directory for this camera (any firmware version)
+     cam_dir = [d for d in os.listdir(ml_dir) 

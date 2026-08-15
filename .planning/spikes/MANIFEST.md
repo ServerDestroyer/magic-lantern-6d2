@@ -34,6 +34,7 @@ Established constraints — non-negotiable for any spike or build.
 | 002 | stub-verification | standard | Given `platform/6D2.111/stubs.S`, when each address is checked against the dumped ROM, then every stub resolves to a plausible function entry rather than a wrong or guessed address | **PARTIAL** ⚠ | rom, stubs, reversing |
 | 003 | cheap-wins-scoping | standard | Given the MOV time limit and focus-box/clean-HDMI asks, when the responsible code paths are traced in ML and the 6D2 ROM, then each has a concrete implementation route and effort estimate | **PARTIAL** ⚠ | features, scoping, upstream |
 | 004 | ml-boot-in-qemu | standard | Given our built `autoexec.bin`, when loaded in qemu-eos alongside the 6D2 ROMs, then ML's own init runs and its stage of failure is identified | **VALIDATED** ✓ | qemu, ml-build, boot |
+| 005 | mpu-spell-capture | standard | Given a startup-log ML build, when its `DEBUGMSG.LOG` is fed to `extract_init_spells.py`, then a valid `mpu_spells/6D2.h` is produced — the artifact 001 says qemu-eos is missing | **PARTIAL** ⚠ | qemu, mpu, logging, upstream, body-test |
 
 ### Verdict summary
 
@@ -51,6 +52,15 @@ Established constraints — non-negotiable for any spike or build.
   001. Fails just after the banner with both cores spinning inside ML's relocated
   image.
 
-**The circular dependency to break:** 001 says QEMU boot needs 6D2 MPU spells;
-the spell-capture pipeline says capture needs a complete boot. Neither resolves
-inside QEMU — the spells must come off the real body.
+- **005 PARTIAL** — the capture pipeline works end to end and produced a real
+  23-spell `mpu_init_spells_6D2[]`, but from *synthetic* traffic, so it cannot
+  fix QEMU. Two live blockers: `log_start()`'s allocation now fails,
+  and the cause is not yet established — the controlling A/B is untried.
+
+**The dependency to break — restated 2026-08-15.** 001 says QEMU boot needs 6D2
+MPU spells. 005 refines this: the capture *mechanism* is not the limit (ML's dump
+task ran at t=19.5 s and wrote a complete 102744-byte file), but **both**
+obstacles stand — qemu-eos replays a generic MPU model, so anything captured
+inside QEMU is the emulator talking to itself, *and* boot stops early enough that
+22 of 23 spells land in the 270 ms before the assert. The spells must come off the
+real body.

@@ -22,11 +22,22 @@ This file is the status ledger: what is done, what is in flight, what is next.
 ### The blocker, stated once
 
 QEMU cannot boot the 6D2 far enough to be a debug rig until qemu-eos has **6D2
-MPU spells**, and those spells cannot be captured in QEMU because boot truncates
-at the very assert they would fix. The loop only breaks by capturing from the
-real body — see `capture_mpu_spells.md`, whose own blocker is a log-buffering bug
-in `src/log-d678.c` (MPU lines reach the QEMU console but not the card-side
-`DEBUGMSG.LOG`, and on hardware only the card file exists).
+MPU spells**. The loop only breaks by capturing from the real body — see
+`capture_mpu_spells.md` and spike 005.
+
+**Corrected 2026-08-15:** this previously said capture was blocked by "a
+log-buffering bug in `src/log-d678.c` (MPU lines reach the QEMU console but not
+the card-side `DEBUGMSG.LOG`)". No such bug exists — that was a measurement
+error, twice over (reading `sd.qcow2` before qemu flushed it, and `grep` treating
+the NUL-padded log as binary). The logger is measured correct and a complete
+102744-byte card log with 23 `mpu_send` was captured.
+
+The reason a body run is still required is different and structural: qemu-eos
+replays its own **generic** MPU model (`[MPU] FIXME: using generic MPU spells for
+6D2`), so spells captured inside QEMU are the emulator talking to itself. Capture
+does *not* require a complete boot — the log ran to t=19.5 s guest, long past the
+assert at ~0.3 s. Spike 005's live blockers are an allocation failure at
+`log_start()` and an ISR-hook clash with `tskmon`.
 
 Note this does **not** block Phase C's MOV time-limit patch, which is verifiable
 directly on the body and cannot brick anything.

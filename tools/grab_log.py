@@ -2,11 +2,16 @@
 """Boot the 6D2 startup-log build and pull ML's complete log buffer straight out of
 guest RAM with the qemu monitor's pmemsave.
 
-Why not just read DEBUGMSG.LOG off the card: qemu-eos's SD model commits only the
-first 32 KB of a multi-burst DMA write (hw/eos/eos.c sdio_write_data), so the card
-copy is truncated even though the buffer in RAM is complete. On a real camera the
-card file is the right source; in the emulator this is."""
-import os, sys, subprocess, time
+The card copy (DEBUGMSG.LOG) is equally valid — but ONLY read it after qemu has
+exited. Reading sd.qcow2 while qemu still holds it returns a half-flushed image
+whose tail reads as NULs at a 16 KiB FAT-cluster boundary, which looks exactly
+like a truncated write and is not one. This route avoids the question entirely
+and also works when the guest wedges before the dump task runs.
+
+Requires the CONFIG_STARTUP_LOG build:
+  make disk_image CONFIG_STARTUP_LOG=y ARM_BINPATH=... ML_MODULES=...
+Run inside nix-shell."""
+import os, re, sys, subprocess, time
 
 sys.path.insert(0, "/home/chris/ml6d2/qemu-eos/magiclantern")
 os.chdir("/home/chris/ml6d2/qemu-eos/magiclantern")
@@ -17,7 +22,26 @@ PLAT = f"{BASE}/magiclantern_simplified/platform/6D2.111/build"
 OUT = os.environ.get("OUTDIR", "/tmp")
 DEST = os.environ.get("DEST", f"{OUT}/6D2-startup-full.log")
 MAX_WAIT = int(os.environ.get("MAX_WAIT", "240"))
-STATE = 0x0015daa8          # diag_entered; buf/buf_size/len follow (see nm output)
+ELF = f"{PLAT}/magiclantern"
+
+
+def bss_addrs():
+    """Resolve buf/len out of the ELF. These are static ints whose addresses move
+    on every rebuild, so hardcoding them silently yields garbage — look them up."""
+    nm = os.environ.get("NM", "arm-none-eabi-nm")
+    try:
+        out = subprocess.run([nm, ELF], capture_output=True, text=True, check=True).stdout
+    except (OSError, subprocess.CalledProcessError) as e:
+        sys.exit(f"could not run {nm} on {ELF}: {e}\n(are you inside nix-shell?)")
+    syms = {}
+    for line in out.splitlines():
+        m = re.match(r"^([0-9a-f]{8}) [bBdD] (\w+)$", line.strip())
+        if m:
+            syms.setdefault(m.group(2), int(m.group(1), 16))
+    missing = [s for s in ("buf", "len") if s not in syms]
+    if missing:
+        sys.exit(f"{ELF} has no {missing} symbols — is this a CONFIG_STARTUP_LOG build?")
+    return syms["buf"], syms["len"]
 
 
 def mon(q, cmd, wait=0.5):
@@ -52,6 +76,9 @@ def words(text):
     return ws
 
 
+BUF_ADDR, LEN_ADDR = bss_addrs()
+print(f"symbols from {ELF}: buf@0x{BUF_ADDR:x} len@0x{LEN_ADDR:x}")
+
 with QemuRunner(f"{BASE}/qemu-eos-build", f"{BASE}/roms",
                 f"{BASE}/magiclantern_simplified", "6D2",
                 sd_file=f"{PLAT}/sd.qcow2", cf_file=f"{PLAT}/cf.qcow2",
@@ -63,16 +90,19 @@ with QemuRunner(f"{BASE}/qemu-eos-build", f"{BASE}/roms",
     stable = 0
     prev = -1
     t0 = time.time()
-    # wait until the log stops growing (guest wedges on the known RscMgr assert)
+    # wait until the log stops growing (guest stops progressing after the assert)
     while time.time() - t0 < MAX_WAIT:
         time.sleep(15)
-        st = words(mon(q, "xp/10xw 0x%x" % STATE))
-        if len(st) < 5:
+        b = words(mon(q, "xp/1xw 0x%x" % BUF_ADDR))
+        l = words(mon(q, "xp/1xw 0x%x" % LEN_ADDR))
+        if not b or not l:
             continue
-        buf, ln = st[1], st[4]
-        entered, appended = st[0], st[6]
-        print(f"t={int(time.time()-t0):4d}s buf=0x{buf:x} len={ln} "
-              f"entered={entered} appended={appended}", flush=True)
+        buf, ln = b[0], l[0]
+        print(f"t={int(time.time()-t0):4d}s buf=0x{buf:x} len={ln}", flush=True)
+        if buf == 0:
+            # log_start() bailed: Canon's allocator gave it nothing. See spike 005.
+            print("  buf is NULL — log_start() got no buffer; nothing will be captured",
+                  flush=True)
         stable = stable + 1 if ln == prev else 0
         prev = ln
         if stable >= 2 and ln > 0:

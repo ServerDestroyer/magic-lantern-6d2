@@ -1,0 +1,245 @@
+diff --git a/platform/6D2.111/Makefile b/platform/6D2.111/Makefile
+index dc7361d39..534e28f95 100644
+--- a/platform/6D2.111/Makefile
++++ b/platform/6D2.111/Makefile
+@@ -22,5 +22,14 @@ CFLAGS_PLATFORM += -mthumb -mlong-calls
+ ML_BOOT_OBJ = boot-d678.o
+ ML_SRC_EXTRA_OBJS += $(BUILD_DIR)/function_overrides.o
+ 
++# Startup-log build for MPU spell capture (qemu-eos) and boot diagnostics.
++# Build with:  make CONFIG_STARTUP_LOG=y
++# Hooks DryosDebugMsg + MPU send/recv ring buffers from boot_post_init_task,
++# saves DEBUGMSG.LOG to card ~20s after boot. See src/log-d678.c.
++ifeq ($(CONFIG_STARTUP_LOG),y)
++ML_SRC_EXTRA_OBJS += $(BUILD_DIR)/log-d678.o
++CFLAGS_PLATFORM += -DCONFIG_STARTUP_LOG
++endif
++
+ include ../Makefile
+ .DEFAULT_GOAL := $(BUILD_DIR)/cam_complete
+diff --git a/src/init.c b/src/init.c
+index 628b4b9b0..dae1a8e31 100755
+--- a/src/init.c
++++ b/src/init.c
+@@ -641,9 +641,25 @@ void boot_pre_init_task()
+ #endif
+ }
+ 
++#ifdef CONFIG_STARTUP_LOG
++/* startup-log capture (log-d678.c): dump the log to card after Canon's
++ * startup MPU property exchange has completed */
++static void startup_log_dump_task()
++{
++    extern void log_finish();
++    msleep(20000);
++    log_finish();
++}
++#endif
++
+ /* called right after Canon's init_task, while their initialization continues in background */
+ void boot_post_init_task(void)
+ {
++#ifdef CONFIG_STARTUP_LOG
++    extern void log_start();
++    log_start();
++    task_create("log_dump", 0x1e, 0x1000, startup_log_dump_task, 0);
++#endif
+ #if defined(CONFIG_PLATFORM_POST_INIT)
+     platform_post_init();
+ #endif
+diff --git a/src/log-d678.c b/src/log-d678.c
+index 9d2d76949..2be658550 100644
+--- a/src/log-d678.c
++++ b/src/log-d678.c
+@@ -21,16 +21,44 @@ extern void * _AllocateMemory(size_t);
+ extern void _FreeMemory(void *);
+ #endif
+ 
++#ifdef CONFIG_STARTUP_LOG
++/* diagnostics for the "capture stops early" investigation: these are updated
++ * without touching DebugMsg, so they stay valid even if interception dies */
++static volatile int diag_entered;       /* my_DebugMsg reached at all */
++static volatile int diag_drop_nobuf;    /* returned: buf == NULL */
++static volatile int diag_drop_full;     /* returned: buffer considered full */
++static volatile int diag_appended;      /* made it past both guards */
++static volatile int diag_lock_enter;    /* about to take the spin lock */
++static volatile int diag_lock_exit;     /* released it again (enter != exit => stuck) */
++static volatile int diag_irq_enabled;   /* entered with interrupts still on */
++static volatile int diag_free_before;   /* allocator pool, sampled around the */
++static volatile int diag_free_after;    /* buffer allocation: if free does not */
++static volatile int diag_total_before;  /* drop by buf_size, we did not get it */
++static volatile int diag_total_after;
++#define DIAG(x) do { (x)++; } while (0)
++#else
++#define DIAG(x) do { } while (0)
++#endif
++
+ /* override Canon's DebugMsg to save all messages */
+ /* DIGIC 7/8: this runs on both CPU cores */
+ static void my_DebugMsg(int class, int level, char* fmt, ...)
+ {
+     uintptr_t lr = read_lr();
+ 
++    DIAG(diag_entered);
++
+     if (!buf)
++    {
++        DIAG(diag_drop_nobuf);
+         return;
++    }
+     if (buf_size - len < 100)
++    {
++        DIAG(diag_drop_full);
+         return;
++    }
++    DIAG(diag_appended);
+ 
+ #if 0
+     if ((class != 0 || level != 15) && level < 3)
+@@ -40,6 +68,7 @@ static void my_DebugMsg(int class, int level, char* fmt, ...)
+     }
+ #endif
+ 
++    DIAG(diag_lock_enter);
+ #if defined(CONFIG_DIGIC_78X)
+     static volatile uint32_t lock;
+     uint32_t old = cli_spin_lock(&lock);
+@@ -47,11 +76,22 @@ static void my_DebugMsg(int class, int level, char* fmt, ...)
+     uint32_t old = cli();
+ #endif
+ 
+-    /* are the interrupts actually disabled? */
++    /* Are the interrupts actually disabled?
++     * NOTE: 80 is decimal = 0x50, which overlaps CPSR M[4] (set in every
++     * AArch32 mode), so this test can never fire — it is dead as written.
++     * Deliberately left as upstream has it: correcting it to 0x80 makes the
++     * check live, and a live check here starts dropping messages. The only
++     * change is that the failure path no longer spins forever, which would be
++     * an apparently-dead camera on a real body. */
+     if (!(read_cpsr() & 80))
+     {
+-        qprintf("Interrupts not disabled!\n");
+-        while(1);
++        DIAG(diag_irq_enabled);
++#if defined(CONFIG_DIGIC_78X)
++        sei_spin_unlock(&lock, old);
++#else
++        sei(old);
++#endif
++        return;
+     }
+ 
+ #if defined(CONFIG_DIGIC_78X)
+@@ -67,7 +107,7 @@ static void my_DebugMsg(int class, int level, char* fmt, ...)
+     const char *task_name = get_current_task_name();
+     
+     /* Canon's vsnprintf doesn't know %20s */
+-    char task_name_padded[11] = "           ";
++    char task_name_padded[12] = "           ";
+     int spaces = 10 - strlen(task_name);
+     if (spaces < 0)
+         spaces = 0;
+@@ -86,7 +126,7 @@ static void my_DebugMsg(int class, int level, char* fmt, ...)
+ #else
+     sei(old);
+ #endif
+-
++    DIAG(diag_lock_exit);
+ }
+ 
+ 
+@@ -272,12 +312,16 @@ static int mpu_recv_log(char * buf, int size_unused)
+ }
+ #endif
+ 
++#ifndef CONFIG_MAGICLANTERN /* full ML: mem.c already defines this */
+ int GetFreeMemForAllocateMemory()
+ {
+     int a,b;
+     GetMemoryInformation(&a,&b);
+     return b;
+ }
++#else
++extern int GetFreeMemForAllocateMemory();
++#endif
+ 
+ void log_start()
+ {
+@@ -289,7 +333,29 @@ void log_start()
+     #else
+     buf_size = 2 * 1024 * 1024;
+     qprintf("Free memory: %X\n", GetFreeMemForAllocateMemory());
++#ifdef CONFIG_STARTUP_LOG
++    /* Does the allocator really hand back what we asked for? A pointer alone
++     * does not prove it: compare the pool before and after. */
++    {
++        int a = 0, b = 0;
++        GetMemoryInformation(&a, &b);
++        diag_total_before = a;
++        diag_free_before = b;
++    }
++#endif
++#ifdef CONFIG_STARTUP_LOG
++    buf = _AllocateMemory(buf_size);
++#else
+     buf = _AllocateMemory(buf_size);
++#endif
++#ifdef CONFIG_STARTUP_LOG
++    {
++        int a = 0, b = 0;
++        GetMemoryInformation(&a, &b);
++        diag_total_after = a;
++        diag_free_after = b;
++    }
++#endif
+     #endif
+ #else
+     #ifdef CONFIG_80D
+@@ -313,7 +379,18 @@ void log_start()
+ #endif
+     qprintf("Logging buffer: %X - %X\n", buf, buf + buf_size - 1);
+     qprintf("Free memory: %X\n", GetFreeMemForAllocateMemory());
++#ifdef CONFIG_STARTUP_LOG
++    if (!buf)
++    {
++        /* Original code spins here forever. On a body that is a camera which
++         * looks bricked; losing the log is the cheaper failure. buf_size = 0
++         * keeps the guards in my_DebugMsg correct. */
++        buf_size = 0;
++        return;
++    }
++#else
+     while (!buf);
++#endif
+ 
+     /* override Canon's DebugMsg (requires RAM address) */
+     uint32_t old_int = cli();
+@@ -368,6 +445,28 @@ void log_finish()
+     DryosDebugMsg(0, 15, "Logging finished.");
+     DryosDebugMsg(0, 15, "Free memory: %d bytes.", GetFreeMemForAllocateMemory());
+ 
++#ifdef CONFIG_STARTUP_LOG
++    /* Append the diagnostics straight into the buffer, deliberately NOT via
++     * DebugMsg: interception is the thing under test, so it cannot be trusted
++     * to record its own failure. Distinguishes "hook stopped being called"
++     * (entered stays at the line count) from "hook ran but dropped the message"
++     * (drop_nobuf / drop_full climb) and from a stuck lock (enter != exit). */
++    if (buf && buf_size - len > 300)
++    {
++        uint32_t dbg = (uint32_t) &DryosDebugMsg & ~1;
++        len += snprintf(buf + len, buf_size - len,
++            "\n*** DIAG entered=%d appended=%d drop_nobuf=%d drop_full=%d "
++            "lock_enter=%d lock_exit=%d irq_enabled=%d len=%d buf=%x buf_size=%d\n"
++            "*** DIAG dbg_addr=%x now=[%08x %08x %08x] want=[c004f8df bf004760 x] "
++            "my_DebugMsg=%x pre_isr_hook=%x post_isr_hook=%x\n",
++            diag_entered, diag_appended, diag_drop_nobuf, diag_drop_full,
++            diag_lock_enter, diag_lock_exit, diag_irq_enabled,
++            len, (uint32_t) buf, buf_size,
++            dbg, MEM(dbg), MEM(dbg + 4), MEM(dbg + 8),
++            (uint32_t) &my_DebugMsg, (uint32_t) pre_isr_hook, (uint32_t) post_isr_hook);
++    }
++#endif
++
+     qprintf("Saving log %X size %X...\n", buf, len);
+     sync_caches();
+     dump_file("DEBUGMSG.LOG", (uint32_t) buf, len);

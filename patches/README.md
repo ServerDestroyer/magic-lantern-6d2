@@ -1,8 +1,15 @@
-# Patches against `magiclantern_simplified`
+# Patches against `magiclantern_simplified` and `qemu-eos`
 
-`ml/` is a clone of someone else's repo and is gitignored here, so any work in it
-would be invisible to this repo and lost on a `git checkout`. Patches live here
-instead.
+`ml/` and `qemu-eos/` are clones of other people's repos and are gitignored here,
+so any work in them would be invisible to this repo and lost on a `git checkout`.
+Patches live here instead.
+
+| # | Target | Subject | State |
+|---|---|---|---|
+| 0001 | `ml/` | MOV time limit, debug flags, two source fixes | **Tested on the real camera** |
+| 0002 | `ml/` | `CONFIG_STARTUP_LOG` MPU-spell capture build | Builds clean; blocked, see spike 005 |
+| 0003 | `qemu-eos/` | `outils.py`: honour `ML_PLATFORM_DIR` | Works; upstreamable one-liner |
+| 0004 | `qemu-eos/` | 6D2 `debugmsg.gdb`: EstimatedSize workaround + fix wrong `assert_log` address | **Verified live in QEMU**; both parts upstreamable |
 
 ## Applying
 
@@ -80,3 +87,69 @@ Enabling it alone compiles fine and displays nothing — the exact
 "compiles and silently does nothing" trap that the property whitelist also sets.
 It needs the histogram display infrastructure first, which is real work requiring
 on-camera verification.
+
+## 0002 — `CONFIG_STARTUP_LOG` MPU-spell capture build
+
+Against `magiclantern_simplified` @ `3f24042a4` (branch `dev`). Builds clean.
+Opt-in: `make CONFIG_STARTUP_LOG=y`, otherwise a no-op.
+
+| Change | File | Why |
+|---|---|---|
+| `CONFIG_STARTUP_LOG=y` flag adds `log-d678.o` | `platform/6D2.111/Makefile` | Nothing in the tree wired the DIGIC 6/7/8 logger into a build |
+| `log_start()` + a `log_dump` task (sleeps 20 s, then `log_finish()`) | `src/init.c` | Capture Canon's startup DebugMsg and MPU ring buffers, then write `DEBUGMSG.LOG` |
+| `task_name_padded[11]` → `[12]` | `src/log-d678.c` | gcc 15 `-Werror=unterminated-string-initialization` |
+| `GetFreeMemForAllocateMemory` duplicate guard | `src/log-d678.c` | `src/mem.c` already defines it in a full ML build |
+| DIAG counters + trailer written into the log | `src/log-d678.c` | Self-verification; on the body the card file is the only evidence |
+| **`while (!buf);` → clean bail-out** | `src/log-d678.c` | Upstream spins forever inside `boot_post_init_task` if the allocation fails — an apparently-bricked camera. Spike 005 proves that allocation really can fail. |
+
+Deliberately not changed: `if (!(read_cpsr() & 80))` is dead (80 is decimal
+0x50, overlapping CPSR M[4], set in every AArch32 mode). Making it live starts
+dropping messages; only its `while(1)` became a return.
+
+**Currently blocked** — see `.planning/spikes/005-mpu-spell-capture/`.
+
+## 0003 — `qemu-eos` `outils.py`: honour `ML_PLATFORM_DIR`
+
+`extract_init_spells.py` dies looking for the pre-2020 `magic-lantern/platform/`
+path. One-line env override, upstreamable as-is.
+
+```sh
+cd qemu-eos && git apply ../patches/0003-qemu-eos-outils-ML_PLATFORM_DIR.patch
+```
+
+## 0004 — 6D2 `debugmsg.gdb`: EstimatedSize workaround + wrong `assert_log` address
+
+Against `qemu-eos` @ `4b667a1d3c` (branch `qemu-eos-v4.2.1`).
+**Verified live in QEMU**, not by inspection.
+
+Two independent changes to `magiclantern/cam_config/6D2/debugmsg.gdb`:
+
+**1. EstimatedSize workaround (new).** `GetEstimatedSize()` at `0xE0202312` loads a
+frame-rate field (fps x100) at `0xE0202372` (`ldr r0,[r6,#8]`) and switches on it
+against exactly eight legal values — `2000 2398 2400 2500 2997 5000 5994 11988` —
+falling through to `ASSERT(FALSE)` at `0xE0202480` = `EstimatedSize.c:1521`, task
+`RscMgr`. Under generic MPU spells the field holds **81** (`0x51`); 200D's
+`patches.gdb` records the identical value ("strange values passed in, 0x51").
+Breakpoint goes AFTER the load — an entry patch is clobbered by it. Same register
+form 77D/750D already ship.
+
+Observed: `ESTSIZE_HIT rate=81` x14, boot **223 -> 2882** log lines. The 1521 assert
+is gone; only a non-fatal `[RSC] ERROR GetEstimatedSizeOfMovie NOT Exist` remains.
+
+**2. `assert_log` address was wrong (bug fix).** The file shipped `b *0xE06170EC`.
+That address is *mid-instruction inside AES S-box lookup code* —
+`0xE06170E0-0xE06170FE` is `ubfx` / `ldrb rN,[r2,rN]` / `lsls` / `orr`, a byte-table
+shuffle. Nothing was ever assert-logged for this camera. The real handler is
+`0xE0617620`: standard prologue, loads the handler pointer at `0x4000`, tail-calls
+it (`bx r3`). Signature `assert(r0 = expr str, r1 = file str, r2 = line)`, confirmed
+against the call site at `0xE020248C` which sets `r2=1521` and ADRs both strings.
+Verified by disassembling both addresses.
+
+### Not included, deliberately
+
+The `EngInit` stub for the *next* wall (`set *(unsigned short*)0xE0091D04 = 0x4770`,
+clearing `SystemIF::KerRLock.c:205` / `WaitPU1 TimeOut`) is **not** in this patch. It
+removes a symptom without booting the camera — `startupInitializeComplete` was absent
+in all 8 test runs — and all three hypotheses around it were refuted on adversarial
+review. It is documented and commented-out in `tools/qemu-6d2-boot.gdb` instead.
+See `PU1_INVESTIGATION.md`.

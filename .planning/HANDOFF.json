@@ -1,0 +1,64 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-08-15T22:05:00Z",
+  "phase": "005",
+  "phase_name": "mpu-spell-capture",
+  "phase_dir": ".planning/spikes/005-mpu-spell-capture",
+  "plan": 1,
+  "task": 5,
+  "total_tasks": 8,
+  "status": "blocked",
+  "completed_tasks": [
+    {"id": 1, "name": "Wire log-d678.c into the 6D2 build via CONFIG_STARTUP_LOG", "status": "done", "commit": "patches/0002-6D2-startup-log-capture.patch (ml/ is gitignored)"},
+    {"id": 2, "name": "Fix gcc-15 build errors in log-d678.c", "status": "done", "commit": "patches/0002-6D2-startup-log-capture.patch"},
+    {"id": 3, "name": "Capture a log and generate mpu_init_spells_6D2[] (23 spells)", "status": "done", "commit": "tools/6D2-DEBUGMSG-card.txt, tools/6D2-startup-qemu.txt, tools/6D2_spells_qemu.h"},
+    {"id": 4, "name": "Root-cause the apparent capture gap", "status": "done", "progress": "No logger bug exists. Two measurement mistakes produced the false symptom; both are recorded as blocking constraints. Logger measured correct: 1306 calls, all appended, zero drops, patch intact."},
+    {"id": "4b", "name": "Replace upstream's while(!buf) infinite spin with a clean bail-out", "status": "done", "commit": "patches/0002-6D2-startup-log-capture.patch"}
+  ],
+  "remaining_tasks": [
+    {"id": 5, "name": "Run the untried A/B: build with the four debug features off and read diag_total_before/diag_free_before from the monitor", "status": "not_started"},
+    {"id": 6, "name": "Body run: sync build/zip/ML/ AND autoexec.bin to card, boot ~25s, battery out, read DEBUGMSG.LOG", "status": "not_started"},
+    {"id": 7, "name": "Generate real 6D2.h, install in qemu-eos/hw/eos/mpu_spells/ AND register it in hw/eos/mpu.c (include list ~L38-51 plus MPU_SPELL_SET list ~L1218-1231), rebuild, confirm the generic-spells warning at mpu.c:1245 disappears", "status": "not_started"},
+    {"id": 8, "name": "Upstream: outils.py ML_PLATFORM_DIR, the while(!buf) brick-risk fix, the spell file", "status": "not_started"}
+  ],
+  "blockers": [
+    {
+      "description": "log_start() allocation fails: GetMemoryInformation() returns 0 total / 0 free and every _AllocateMemory fails (2MB down to 128KB, even with retry+msleep), so buf is NULL and nothing is logged. Before another session's platform/6D2.111 changes, the same point reported 9MB total / 5.9MB free. CAUSE NOT ESTABLISHED — the four debug features (features.h:41,46-48) are the leading suspect but that session also changed consts.h, internals.h and stubs.S in the same window, and the controlling A/B is task 5.",
+      "type": "technical",
+      "workaround": "Task 5 first. If a features-off build still reports 0/0, bisect consts.h/internals.h/stubs.S in a scratch copy. Fixes to consider once the cause is known: move log_start() later, or a hardcoded unused-RAM buffer as done for 80D (log-d678.c:366), 5D4 (:371), 200D (:376) — that path is tied to LOG_EARLY_STARTUP, which the 6D2 does not enable."
+    },
+    {
+      "description": "Spells captured inside QEMU are synthetic — qemu-eos replays its own generic MPU model ('[MPU] FIXME: using generic MPU spells for 6D2') — AND boot stops early: the assert is at t=0.322816 and 22 of 23 mpu_send plus all 3 mpu_recv land in the 270ms before it. Both obstacles are real; only a real body yields a usable 6D2 spell set.",
+      "type": "external",
+      "workaround": "None. Requires the body run (task 6)."
+    }
+  ],
+  "retracted_blockers": [
+    {
+      "description": "An earlier version of this handoff claimed FEATURE_SHOW_TASKS makes tskmon.c steal pre_isr_hook/post_isr_hook. FALSE — do not reinstate.",
+      "evidence": "src/tskmon.c:501 guards those assignments behind #ifdef CONFIG_ISR_HOOKS, defined nowhere in the tree (only the three #ifdef sites at tskmon.c:36,429,501), so they never compile. tskmon.o is unconditional at platform/Makefile:364, not gated by FEATURE_SHOW_TASKS. The captured DIAG trailer reads pre_isr_hook=103935 post_isr_hook=1039c9 — log-d678's own hooks (src/log-d678.c:410-411), intact."
+    }
+  ],
+  "human_actions_pending": [
+    {
+      "action": "Body run: sync the whole build/zip/ML/ tree (modules + 6D2_111.sym) AND build/autoexec.bin from the same CONFIG_STARTUP_LOG build to the SD card, power on, wait ~25 s, pull the battery, copy DEBUGMSG.LOG off the card",
+      "context": "Only a real camera produces non-synthetic MPU traffic. An ML build from this tree has already been flashed and confirmed on this body (MOV time limit), so the body-test loop is proven and ROADMAP.md:75 / MANIFEST.md:21 'do not flash until QEMU passes' are superseded. Do NOT format the card in-camera. A stale ML/ tree or mismatched 6D2_111.sym is the known card-sync failure mode. Read the DIAG trailer first; drop_full non-zero means raise buf_size. A NULL buf yields no file and no trailer at all.",
+      "blocking": true
+    }
+  ],
+  "decisions": [
+    {"decision": "Keep the full ML build rather than resurrecting the minimal profile", "rationale": "The full CONFIG_STARTUP_LOG path is proven end to end and upstream deleted the minimal makefiles", "phase": "005"},
+    {"decision": "Leave if (!(read_cpsr() & 80)) as dead code", "rationale": "80 is decimal (0x50) and overlaps CPSR M[4], set in every AArch32 mode, so it can never fire. Only its while(1) became a return. Whether a corrected 0x80 check would drop messages was never isolated and is doubtful, since cli_spin_lock (arm-mcr.h:571-573) masks interrupts immediately before it.", "phase": "005"},
+    {"decision": "Revert the allocation retry/fallback loop", "rationale": "It did not help — allocation fails at every size including 128 KB. A vestigial no-op #ifdef remains at log-d678.c:346-350; collapse it before upstreaming.", "phase": "005"},
+    {"decision": "Probe guest state from the host over the qemu monitor instead of adding guest-side logging", "rationale": "Keeps working when the guest stops progressing, and settled in one boot what five parallel code-reading agents got wrong", "phase": "005"},
+    {"decision": "Rename the captured logs off the .log extension", "rationale": ".gitignore:14 ignores *.log, so the evidence files were invisible to git and one git clean from being lost", "phase": "005"}
+  ],
+  "uncommitted_files": {
+    "this_thread_ml": ["ml/platform/6D2.111/Makefile", "ml/src/init.c", "ml/src/log-d678.c"],
+    "other_session_ml": ["ml/platform/6D2.111/consts.h", "ml/platform/6D2.111/features.h", "ml/platform/6D2.111/internals.h", "ml/platform/6D2.111/stubs.S"],
+    "qemu_eos": ["qemu-eos/hw/eos/mpu_spells/outils.py", "qemu-eos/magiclantern/cam_config/6D2/debugmsg.gdb (other session)"],
+    "note": "ml/ and qemu-eos/ are gitignored — these survive only as patches/ entries. Repo-side changes are committed alongside this handoff."
+  },
+  "next_action": "Run the A/B that has not been run. Build the capture image with the four debug features COMMENTED OUT (not deleted — they are another session's work) in platform/6D2.111/features.h, boot it, and read diag_total_before/diag_free_before from the qemu monitor. Pool non-zero plus a DEBUGMSG.LOG with a DIAG trailer means the features are the cause; still 0/0 exonerates them and the next step is bisecting consts.h/internals.h/stubs.S in a scratch copy. One build, ~5 minutes.",
+  "context_notes": "The thread began as 'why is the card log truncated' and the honest answer is that it never was. Most of the value is in what was measured and in three false conclusions that got caught: an ML logger bug that did not exist, a qemu-eos SD DMA bug that did not exist, and a tskmon ISR-hook conflict that did not exist. The first two were caught by measuring guest state; the third by adversarially verifying this very handoff. Assume at least one more wrong claim survives here. Note that RAM addresses and BSS symbol addresses are valid ONLY for the exact binary that produced them, the BSS diag block is interleaved by the linker rather than contiguous, and tracked repo paths (tools/, patches/, .planning/) are being edited by concurrent sessions too — not just the gitignored clones."
+}
