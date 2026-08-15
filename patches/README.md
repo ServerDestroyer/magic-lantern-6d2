@@ -6,7 +6,7 @@ Patches live here instead.
 
 | # | Target | Subject | State |
 |---|---|---|---|
-| 0001 | `ml/` | MOV time limit, debug flags, two source fixes | **Tested on the real camera** |
+| 0001 | `ml/` | MOV time limit, debug flags, two source fixes | **Tested on the real camera** — but SPLIT before upstreaming: Track A's A/B measured the three `FEATURE_SHOW_*` flags causing a 0/0 memory pool at `log_start()` in `CONFIG_STARTUP_LOG` builds (MOV limit exonerated; normal boots unaffected). Ship the MOV-limit + source-fix half alone; hold the SHOW flags until the pool interaction is understood. |
 | 0002 | `ml/` | `CONFIG_STARTUP_LOG` MPU-spell capture build | Builds clean; blocked, see spike 005 |
 | 0003 | `qemu-eos/` | `outils.py`: honour `ML_PLATFORM_DIR` | Works; upstreamable one-liner |
 | 0004 | `qemu-eos/` | 6D2 `debugmsg.gdb`: EstimatedSize workaround + fix wrong `assert_log` address | **Verified live in QEMU**; both parts upstreamable |
