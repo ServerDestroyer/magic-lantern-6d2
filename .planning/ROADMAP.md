@@ -60,7 +60,7 @@ The last category is where the cheap wins hide.
 |---|------|--------|
 | 9 | Scope the two cheap wins (MOV time limit; focus box / clean HDMI, issue #221) | **DONE** → spike 003 + verification |
 | 10 | Work a target: patch → test on body → PR upstream | **MOV TIME LIMIT CONFIRMED ON HARDWARE (2026-08-15)** — stopped at 60 s with limit set to 1 min. Debug displays also confirmed. `patches/0001`. PR-ready (see cross-session caveat in project memory re: debug flags vs startup logger). |
-| 11 | ~~Evaluate porting 200D raw video~~ **Finish existing raw video** | **IN PROGRESS — deep in debugging.** Nothing to port: upstream already has it "mostly working" (`e77bd879a`). On the body: raw *detection passes* in movie LV (`Resolution changed` + `Black level` printed); first freeze traced to a D678-wide livelock — `prop_request_change_wait` burns 2 s per denied write, `PROP_ICU_UILOCK` whitelisted on no D7 body, mlv_lite calls it around every realloc. Fix in `patches/0004`, deployed, awaiting camera retest. Fallback suspect if freeze persists: SRM allocation deadlock. |
+| 11 | ~~Evaluate porting 200D raw video~~ **Finish existing raw video** | **RAW VIDEO RECORDED ON THE BODY (2026-08-15 16:12 — first ever on a 6D2).** `footage/M15-1612.MLV`: 90.7 MB, MLV v2.0, 25 clean 1920x1080 14-bit frames, finalized header, full metadata chain. Patch 0004 (D678 denied-prop-wait fix) confirmed on hardware — no livelock, no freeze. Remaining defects → spike 006 (`.planning/spikes/006-rawvideo-memory/`): shoot_malloc pool shrink 135→43 MB, "Early stop (8)" / "No memory suites." after stop, garbage MLVI sourceFps. Body-run order: `.planning/BODY_TEST_PLAN.md`. |
 
 ## Active spikes
 
