@@ -4,12 +4,13 @@ Goal: produce `qemu-eos/hw/eos/mpu_spells/6D2.h`, which does not exist upstream 
 **no DIGIC 7 camera has one**, so the 6D2 would be the first.
 
 Status 2026-08-15: pipeline built and proven end to end in QEMU. The logger is
-verified correct. The only remaining limit is how far the *emulator* boots.
+verified correct and a complete log was captured. It then **regressed** when
+another session enabled four features; see "Current blocker".
 
 ## The pipeline
 
-1. **Build the startup-log ML** (new `CONFIG_STARTUP_LOG` flag adds
-   `src/log-d678.o` and the `log_start()` / dump-task hooks in `src/init.c`):
+1. **Build the startup-log ML** (`CONFIG_STARTUP_LOG` adds `src/log-d678.o` plus
+   the `log_start()` / dump-task hooks in `src/init.c`):
 
        nix-shell --run 'cd ml/platform/6D2.111 && \
          make disk_image CONFIG_STARTUP_LOG=y \
@@ -17,18 +18,15 @@ verified correct. The only remaining limit is how far the *emulator* boots.
            ML_MODULES="raw_video/mlv_lite file_man bench dual_iso"'
 
    Yields `build/autoexec.bin` (goes on the card) and `build/sd.qcow2` (for QEMU).
-   The explicit `ML_MODULES` list omits `lua`, which does not compile under gcc 15.
+   The explicit `ML_MODULES` list omits `lua`, which does not build under gcc 15.
 
 2. **Get a boot log.** ML hooks Canon's DebugMsg from `boot_post_init_task`,
    records every MPU send/recv, and a task writes `DEBUGMSG.LOG` to the card 20 s
    after boot.
-   - **In QEMU, do NOT use the card copy** — read the buffer out of guest RAM:
-
-         nix-shell --run 'python3 tools/grab_log.py'      # writes 6D2-startup.log
-
-     (Why: see "The 32 KB truncation" below.)
-   - **On the real body**: power on, wait ~25 s, pull the battery, read
-     `DEBUGMSG.LOG` off the card. There the card copy is the correct source.
+   - In QEMU: `python3 tools/grab_log.py` reads the buffer straight out of guest
+     RAM via the monitor's `pmemsave`. Works even when the guest wedges, so it is
+     the more reliable option — but the card path works too (see below).
+   - On the body: power on, wait ~25 s, pull the battery, copy `DEBUGMSG.LOG`.
 
 3. **Convert log → spell header:**
 
@@ -39,55 +37,89 @@ verified correct. The only remaining limit is how far the *emulator* boots.
    The `ML_PLATFORM_DIR` override was added to `outils.py`; upstream hardcodes the
    old `magic-lantern/platform/` repo path. Worth upstreaming.
 
-Current QEMU output is in `tools/` — `6D2-startup-qemu.log` (105 KB, 1343 lines)
+Captured artifacts are in `tools/`: `6D2-startup-qemu.log` (105 KB, 1343 lines)
 and `6D2_spells_qemu.h` (23 spells, 16 with decoded property names such as
-PROP_CARD2_EXISTS, PROP_AVAIL_SHOT, PROP_BURST_COUNT, PROP_TFT_STATUS).
+PROP_CARD2_EXISTS, PROP_AVAIL_SHOT, PROP_BURST_COUNT, PROP_TFT_STATUS). The
+RAM-extraction and card-file paths were cross-checked and agree.
 
-## The 32 KB truncation — an emulator bug, not an ML bug
+## Verified working (measured, not assumed)
 
-The card-side `DEBUGMSG.LOG` holds exactly 32768 bytes of text followed by NUL
-padding out to the recorded file size. This was originally misdiagnosed as ML
-dropping messages. It is not. Measured, from the host, via the qemu monitor:
+Read from the host over the qemu monitor (ML's own counters in BSS, plus
+`pmemsave`), and from the card after a clean shutdown:
 
-- The logger is called for essentially every DebugMsg the firmware emits
-  (1339 calls) and **appends all of them** — `drop_nobuf=0`, `drop_full=0`,
-  `entered == appended`, spin lock balanced (`enter == exit`).
-- The DebugMsg patch stays installed for the whole run (the words at
-  `0xdf006e6c` remain `c004f8df / bf004760 / <my_DebugMsg>`).
-- `_AllocateMemory(2 MB)` genuinely succeeds: the pool is 9 MB and free drops by
-  2097168 bytes across the call.
-- **The buffer in guest RAM is complete** right up to `len` (105389 bytes) —
-  confirmed by reading it at several offsets and by `pmemsave`.
-- Canon's driver issues the whole write: `FIO_WriteFile(3,0x7ba4c4,102213)` →
-  `[N]Write buf=7ba4c4 start=15c0 count=199` (199 sectors), reporting success
-  with no SDIO error. Yet a raw scan of the card image finds exactly **64
-  sectors = 32768 bytes** of log text at that offset and nothing after.
+- The logger sees essentially every DebugMsg the firmware emits (1306 calls) and
+  **appends all of them**: `drop_nobuf=0`, `drop_full=0`, `entered == appended`,
+  spin lock balanced (`lock_enter == lock_exit`).
+- The DebugMsg patch stays installed all run (`0xdf006e6c` reads
+  `c004f8df / bf004760 / <my_DebugMsg>`).
+- `_AllocateMemory(2 MB)` succeeded, from a 9 MB pool (free dropped 2097168).
+- **Card file: 102744 bytes, zero NUL bytes, 1310 lines, 23 mpu_send + 3
+  mpu_recv, `Logging finished.` and the DIAG trailer both present.**
 
-Root cause: `qemu-eos/hw/eos/eos.c`, `sdio_write_data()` performs a single DMA
-burst per SD command, so only the first 32 KB of a chunked multi-burst write is
-committed. Everything above that is silently dropped.
+### Measurement trap — do not read sd.qcow2 while QEMU is running
 
-This does **not** affect the real camera: Canon's `dump_file` (ROM stub
-`0xe00809a2`) is the same function ML used to write the 32 MiB `ROM0.BIN` and
-16 MiB `ROM1.BIN` from this very body in 2025 — large-file writes demonstrably
-work on real hardware.
+An earlier run appeared to truncate at exactly 32768 bytes with NUL padding, and
+this was written up here as a qemu-eos SD DMA bug. **That was wrong.** The image
+was being read before QEMU had flushed it; 32768 is exactly two 16 KiB FAT
+clusters, i.e. flush granularity. Stop the emulator first, then read. There is no
+SD emulation bug — Canon's `dump_file` (ROM stub `0xe00809a2`) writes the whole
+100 KB correctly, and it is the same stub that wrote this body's 32 MiB ROM0.BIN
+in 2025.
 
-## What actually limits the QEMU capture
+## Current blocker (new, 2026-08-15 ~14:00)
 
-Not the logger and not the SD bug (which `tools/grab_log.py` bypasses), but the
-known 6D2 boot wedge: the firmware halts at
-`ASSERT : Resource/./EstimatedSize.c, Task = RscMgr, Line 1521` and shortly after
-stops making progress entirely — console output and every ML counter freeze
-together and stay frozen for as long as you wait (verified over 200 s). That caps
-the emulator at ~23 MPU spells. Tracked as spike 001.
+Another session enabled `FEATURE_SHOW_TASKS`, `FEATURE_SHOW_CPU_USAGE`,
+`FEATURE_SHOW_GUI_EVENTS` and `FEATURE_OVERRIDE_MOVIE_30_MIN_LIMIT` in
+`platform/6D2.111/features.h` (plus consts.h/stubs.S edits). With those enabled,
+the startup logger no longer captures anything. Reproducible, measured:
 
-A real-body boot runs to completion and would produce the full spell set.
+- At `log_start()` time `GetMemoryInformation()` now reports **0 total / 0 free**,
+  every `_AllocateMemory` fails (2 MB down to 128 KB, with retries), so `buf`
+  stays NULL, DebugMsg is never patched, and no `DEBUGMSG.LOG` is written.
+- Previously, at the same point, the pool reported 9 MB total / 5.9 MB free.
+
+Two things to resolve before a body run:
+
+1. **Allocation.** Either move `log_start()` later (after Canon's allocator is
+   up) or use a hardcoded unused-RAM buffer, which is what `src/log-d678.h:9-15`
+   says upstream does for 80D/5D4/200D and explicitly warns must be found per
+   camera. Do not reuse another model's address.
+2. **ISR hook conflict.** `FEATURE_SHOW_TASKS` pulls in `src/tskmon.c`, which
+   sets `pre_isr_hook` / `post_isr_hook` (tskmon.c:505-506) — the same two hooks
+   `log_start()` installs for MPU capture. Whichever runs last wins. The MPU
+   send/recv capture is the whole point of this exercise, so build the capture
+   image with those debug features off, or make the hooks chain.
+
+## Safety change kept
+
+`src/log-d678.c` upstream does `while (!buf);` if the allocation fails — an
+infinite spin inside `boot_post_init_task`. On a body that is a camera that looks
+bricked, and the blocker above shows the allocation really can fail. It now sets
+`buf_size = 0` and returns: no log beats a dead camera.
+
+The neighbouring interrupt check `if (!(read_cpsr() & 80))` is dead code —
+80 is decimal (0x50) and overlaps CPSR M[4], which is set in every AArch32 mode,
+so it can never fire. Left as-is deliberately (correcting it to 0x80 makes the
+check live and starts dropping messages); only its `while(1)` was made a return.
 
 ## What goes on the SD card
 
 Only `build/autoexec.bin` from the `CONFIG_STARTUP_LOG` build, copied to the card
-root. Nothing else — the camera bootflag is already set and ML is already
-installed. Do NOT format the card in-camera (that wipes the boot-sector flags).
+root. Nothing else — the bootflag is set and ML is already installed. Do NOT
+format the card in-camera (it wipes the boot-sector flags).
 
-This is still an untested-on-body build (`platform/6D2.111/README.txt`), so keep
-the run short: power on, wait ~25 s, battery out, one file off the card.
+Still an untested-on-body build (`platform/6D2.111/README.txt`): keep the run
+short — power on, wait ~25 s, battery out, one file off the card. Read the DIAG
+trailer first; `drop_full` non-zero means raise `buf_size` and repeat.
+
+## What QEMU cannot tell you
+
+- **The MPU traffic here is synthetic** — qemu-eos replays its own generic model
+  (`[MPU] FIXME: using generic MPU spells for 6D2`). The 23 spells are the
+  emulator talking to itself. Only a body run yields a real 6D2 spell set.
+- **The emulator wedges early** at `ASSERT : Resource/./EstimatedSize.c, Task =
+  RscMgr, Line 1521` (spike 001) and then stops entirely — console output and
+  every ML counter freeze together and stay frozen (verified over 200 s). The
+  phases that generate most MPU traffic are never reached.
+- **Memory pressure is not representative**, which is exactly what the blocker
+  above is about.

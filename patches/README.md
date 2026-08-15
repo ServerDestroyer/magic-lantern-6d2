@@ -44,7 +44,16 @@ what the filenames suggest, and the reason a first scan of ROM1 found nothing.
 
 ### Verification status
 
-Built and inspected, **not yet run on the camera**:
+**CONFIRMED ON HARDWARE (2026-08-15).** Built, flashed to the card, and tested on
+the real 6D2: with the limit set to 1 min, recording stopped on its own at ~60 s.
+That was the one thing static analysis could not settle — whether the getter at
+`0xe042fee8` is the function Canon actually consults to stop recording. It is.
+
+Both addresses are therefore real, and `apply_patches()` did not trip
+`E_PATCH_OLD_VALUE_MISMATCH`, which independently confirms the `.old_value`
+constants (`0x1b7358` / `0x6d9e8`) match what is in this body's ROM.
+
+Also verified statically before flashing:
 
 - `movtweaks.o` exports `change_mov_time_limit`, `mov_time_limit`,
   `print_mov_time_limit`
@@ -58,9 +67,8 @@ address fails loudly with `E_PATCH_OLD_VALUE_MISMATCH` rather than corrupting
 anything. The realistic bad outcome is "the menu applies but recording still
 stops at 29:59".
 
-**On-camera test:** set the limit to 60 s, record, and check it stops at 60 s.
-That single test settles the only remaining doubt — whether this getter is the
-one Canon consults to stop recording.
+**On-camera test: PASSED.** Limit set to 1 min, recording stopped by itself at
+~60 s. Ready to offer upstream.
 
 ## Not included, and why
 
