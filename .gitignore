@@ -1,0 +1,20 @@
+# Canon firmware is copyrighted — NEVER commit ROM dumps or SD card mirrors.
+roms/
+Backup SD card/
+*.BIN
+*.bin
+*.FIR
+
+# Upstream clones — tracked by their own git repos, not ours.
+ml/
+magiclantern_simplified/
+qemu-eos/
+
+# Local build/run artifacts
+*.log
+__pycache__/
+*.pyc
+
+# Secrets
+discord-bot/.env
+.env
