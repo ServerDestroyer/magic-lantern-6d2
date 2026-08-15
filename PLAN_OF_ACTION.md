@@ -80,6 +80,28 @@ Consequences for the rest of the plan:
 because nobody ran `ls` on the card. Check the artifact before planning around
 its absence.
 
+### ROM layout ground truth (established 2026-08-15, reusable)
+
+Get these wrong and every address check downstream is garbage:
+
+- **`ROM0.BIN` is the main firmware and maps to `0xE0000000`** (32 MiB), not
+  ROM1. This is the inverse of what the filenames suggest and it cost one spike a
+  full dead-end scan. `ROM1.BIN` maps to `0xF0000000` (16 MiB). Confirmed against
+  `platform/200D.101/consts.h:190-193` and verified empirically via
+  `GMT_FUNCTABLE` and `debug_assert`. File offset = address − base.
+- **No stub in `platform/6D2.111/stubs.S` lands in ROM1 at all** — the table is
+  102 ROM0 addresses, 30 DryOS kernel, 28 DRAM, 1 unmapped.
+- **The DryOS kernel image is stored at ROM0 file offset `0x0100553C`**
+  (address `0xE100553C`) and is remapped to `0xDF000000` at runtime. Found by
+  brute-forcing the base against 208 entry points from Canon's veneer table at
+  `0xE043A000`; 146 hit a prologue, runner-up scored 17. Cross-checked against
+  `SystemIF::KerQueue.c` / `KerRLock.c` string positions. This makes the 30
+  kernel stubs verifiable and lets us disassemble DryOS directly instead of
+  borrowing 200D addresses.
+- Canon's **veneer table at `0xE043A000`** has 1336 entries of
+  `ldr pc,[pc,#-4]` + target — a ready-made index of external call targets
+  (237 kernel, 891 DRAM, 99 ROM0).
+
 **`SFDATA.BIN` is NOT required for the 6D2.** The `sf_dump` module
 (`ml/modules/dev_tools/sf_dump/sf_dump.c`) only has stubs for DIGIC 4/5 bodies,
 and qemu-eos's `magiclantern/ml_tests/cam.py:68` still reads `# TODO handle

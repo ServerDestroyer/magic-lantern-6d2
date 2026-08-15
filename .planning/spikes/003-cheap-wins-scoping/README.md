@@ -433,3 +433,54 @@ have a concrete route and effort estimate. Feature 1 exceeded that — the exact
 ROM addresses are in hand. Feature 2 has a concrete route and a defensible
 estimate, but its premise as a *cheap* win is wrong, and the specific patch point
 is still unidentified. Half validated, half corrected.
+
+---
+
+## Independent verification of the Feature 1 addresses (2026-08-15)
+
+The two addresses were found by heuristic, so before they get written into
+`consts.h` they were put through a four-lens adversarial check — raw bytes,
+whole-ROM uniqueness, Thumb-2 instruction decoding, and cross-body structure —
+each lens instructed to *refute* rather than confirm, plus a judge that
+re-derived the load-bearing facts itself.
+
+**Verdict: CONFIRMED.** No lens refuted it, and the judge independently
+reproduced the decisive evidence:
+
+- `ROM0.BIN` is 33,554,432 bytes. Word at file offset `0x42FF74` = `0x001B7358`
+  (1,799,000 ms = 29m59s); word at `0x42FF78` = `0x0006D9E8` (449,000 ms =
+  7m29s). Adjacent, in the claimed order.
+- Each byte pattern occurs **exactly once** in the entire 32 MiB image, and the
+  adjacent pair occurs exactly once. There are zero competing candidate sites,
+  which eliminates the usual "picked one of several" failure mode.
+- Halfwords at `0x42FEF2` and `0x42FEF6` are both `0x4820` = `LDR r0,[pc,#128]`.
+  Computing the T1 literal target by hand — `align4(PC+4) + 0x80` — resolves to
+  `0xE042FF74` and `0xE042FF78` exactly.
+- The surrounding shape is a textbook getter: `push {r4,lr}` / `bl` /
+  `cmp r0,#1` / `beq` / ldr-literal / `pop` / ldr-literal / `pop`, with the two
+  words in the trailing literal pool.
+
+**One correction to this spike's own wording.** It described `0xE042FEF2` and
+`0xE042FEF6` as "two consecutive instructions". They are not sequentially
+executed — they are the two *arms* of the `beq` at `0xE042FEF0`, separated by a
+`pop` at `0xE042FEF4`. This strengthens the finding rather than weakening it: a
+two-arm mode selector is exactly the shape a normal-FPS/high-FPS limit getter
+should have.
+
+**Residual risk is semantic, not addressing.** Nothing static proves this getter
+is the function Canon consults to *stop recording* — uniqueness and structure are
+strong circumstantial support, but no lens traced the return value to a
+recording-stop path. Also unverified: whether Canon caches the limit into RAM at
+boot (which would make a post-boot ROM patch inert), and whether 64 KB MMU remap
+of page `0xE0420000` actually works on this body.
+
+**This cannot brick anything.** `apply_patches()` validates `.old_value` before
+writing and rolls back all patches atomically, so a wrong address fails loudly
+with `E_PATCH_OLD_VALUE_MISMATCH`. The realistic bad outcome is "menu applies,
+recording still stops at 29m59s" — not damage.
+
+**Cheapest next check:** ship the two defines plus
+`FEATURE_OVERRIDE_MOVIE_30_MIN_LIMIT`, set the limit to an unmistakable 60 s,
+record, and see whether it stops at 60 s. That one test collapses all three
+residual risks at once — cheaper and more conclusive than any further static
+analysis.
