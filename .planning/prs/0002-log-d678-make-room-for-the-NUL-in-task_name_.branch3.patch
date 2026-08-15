@@ -1,0 +1,32 @@
+From 2b32a614de433c51f0f5482e5e71e3d7aca2d3b1 Mon Sep 17 00:00:00 2001
+From: Chris <christopher@deocracy.org>
+Date: Sat, 15 Aug 2026 16:22:41 -0700
+Subject: [PATCH 2/2] log-d678: make room for the NUL in task_name_padded's
+ initializer
+
+char task_name_padded[11] = "           " (11 spaces) leaves no room
+for the terminator, so the array starts out unterminated. Not a
+runtime bug - the snprintf below always writes a NUL before the first
+read - but gcc 15 rejects the initializer under
+-Werror=unterminated-string-initialization, so the file no longer
+compiles with current toolchains. Size the array for the terminator.
+---
+ src/log-d678.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/log-d678.c b/src/log-d678.c
+index 2577e5843..429de2ab4 100644
+--- a/src/log-d678.c
++++ b/src/log-d678.c
+@@ -67,7 +67,7 @@ static void my_DebugMsg(int class, int level, char* fmt, ...)
+     const char *task_name = get_current_task_name();
+     
+     /* Canon's vsnprintf doesn't know %20s */
+-    char task_name_padded[11] = "           ";
++    char task_name_padded[12] = "           ";
+     int spaces = 10 - strlen(task_name);
+     if (spaces < 0)
+         spaces = 0;
+-- 
+2.54.0
+

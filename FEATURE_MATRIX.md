@@ -1,9 +1,12 @@
 # FEATURE_MATRIX.md — Magic Lantern on the Canon EOS 6D Mark II
 
-**Date:** 2026-08-15
+**Date:** 2026-08-15 (classification completed same day — 0 unknown rows remain)
 **Tree analysed:** ml/ = `reticulatedpines/magiclantern_simplified`, HEAD `3f24042a4` (2026-08-02)
 **Platform:** ml/platform/6D2.111 (firmware 1.1.1, DIGIC 7, Cortex-A9, dual core)
 **Method:** static source analysis only. No camera, no QEMU run. Nothing in ml/ or qemu-eos/ was modified.
+The 2026-08-15 completion pass additionally used upstream GitHub state (issue #221, PR #223) and the
+hardware results recorded in patches/README.md; rows marked "Done locally" reflect this repo's
+patches, not upstream HEAD.
 
 ---
 
@@ -114,9 +117,9 @@ subsystem across the whole D678X family
 
 | Feature | Status | Reason | Effort | Upstream | Evidence |
 |---|---|---|---|---|---|
-| Show tasks | Off | never enabled | S | stephen-e — on for 12 of 14 D6/7/8/X siblings | ml/src/debug.c:1050, ml/src/tasks.c:30,92,137; on in ml/platform/200D.101/features.h and ml/platform/77D.110/features.h; dependency `CONFIG_TSKMON` is unconditional at ml/src/config-defines.h:31 |
-| Show CPU usage | Off | never enabled | S | stephen-e — on for 12 siblings | ml/src/debug.c:1070, ml/src/tasks.c:27,38; ml/platform/200D.101/features.h |
-| Show GUI events | Off | never enabled | S | stephen-e — on for 12 siblings | ml/src/debug.c:1081; ml/platform/200D.101/features.h |
+| Show tasks | **Done locally (2026-08-15)** | never enabled | — | stephen-e — on for 12 of 14 D6/7/8/X siblings | Enabled and flashed with patches/0001 (commit 93b53bb "debug displays"). Upstream evidence: ml/src/debug.c:1050, ml/src/tasks.c:30,92,137; `CONFIG_TSKMON` unconditional at ml/src/config-defines.h:31. Temporarily commented out in the working tree for spike 005's A/B — that is an experiment, not a revert. |
+| Show CPU usage | **Done locally (2026-08-15)** | never enabled | — | stephen-e — on for 12 siblings | Same patch 0001 / same A/B note. ml/src/debug.c:1070, ml/src/tasks.c:27,38 |
+| Show GUI events | **Done locally (2026-08-15)** | never enabled | — | stephen-e — on for 12 siblings | Same patch 0001 / same A/B note. ml/src/debug.c:1081 |
 | Show free memory | Off | never enabled | S | stephen-e — on for 10 siblings | ml/src/mem.c:1104–1715, ml/src/debug.c:1843. The one EDMAC reference (ml/src/mem.c:1390) sits inside `#ifndef CONFIG_DIGIC_678X`, so it is excluded on 6D2 — not a blocker |
 | Show image buffers info | Off | never enabled | S | none on 6D2 | ml/src/debug.c |
 | Unmount SD card | Off | never enabled | S | none on 6D2 | ml/src/debug.c |
@@ -170,10 +173,14 @@ after checking correctness via reversing, tests, etc.", and it warns "Writing to
 | HDR bracketing | ml/src/shoot.c, ml/src/flexinfo.c |
 | Follow focus / rack focus / focus stacking | ml/src/focus.c, ml/src/shoot.c |
 | LV zoom settings, LV zoom sharp contrast | ml/src/shoot.c, ml/src/lens.c |
-| LV focus box snap, snap-to-x5-raw, autohide | ml/src/shoot.c, ml/src/tweaks.c. *Adjacent to the focus-box-hide deep dive owned by another agent.* |
+| LV focus box snap, snap-to-x5-raw | ml/src/shoot.c, ml/src/tweaks.c — these write `PROP_LV_AFFRAME`. **Autohide moved out of this bucket**: it sits in the same `CONFIG_PROP_REQUEST_CHANGE` block of all_features.h:251-267 but its enabled path makes no prop write (ml/src/tweaks.c:313-368 only reads), and upstream PR #223 ran it on a real 6D2 with the stock 4-property whitelist. Reclassified as plain `never enabled` — see its row in section 4. |
 | Sticky DOF | ml/src/tweaks.c |
 
 ### 4. Blocked — stub or const missing (solvable by reversing this ROM)
+
+*(Also holds, for continuity, the three rows resolved or reclassified on 2026-08-15: the MOV limit
+— formerly counted here as `stub missing`, now Done locally — and the two rows the former
+"Focus box hide / clean HDMI — unknown" entry split into.)*
 
 | Feature | Status | Reason | Effort | Upstream | Evidence |
 |---|---|---|---|---|---|
@@ -188,8 +195,9 @@ after checking correctness via reversing, tests, etc.", and it warns "Writing to
 | Force LiveView | Blocked | stub missing | M | nobody | Needs `GUIMODE_MOVIE_ENSURE_A_LENS_IS_ATTACHED`, `GUIMODE_MOVIE_PRESS_LV_TO_RESUME` — ml/src/movtweaks.c:399,966 |
 | FlexInfo (custom info display) | Blocked | stub missing | L | nobody | Needs `CARD_A_MAKER`, `CARD_A_MODEL`, `DISPLAY_BATTERY_POS_X/Y`, `DISPLAY_CLOCK_POS_X/Y` and more — ml/src/flexinfo.c:15. `flexinfo.o` already builds |
 | FPS override | Blocked | stub missing | L | stephen-e `53791dafe` (regs "found, probably"), `ffef459f0` | Needs `FRAME_SHUTTER_BLANKING_WRITE`, ml/src/fps-engio.c:1534. Partial groundwork in ml/platform/6D2.111/fps-engio_per_cam.c |
-| MOV/MP4 29:59 recording limit override | Blocked | stub missing | M | stephen-e — **on for 200D only** (ml/platform/200D.101/features.h `FEATURE_OVERRIDE_MOVIE_30_MIN_LIMIT`) | 6D2 lacks the `get_max_millis_for_mov` stub (present in ml/platform/200D.101/stubs.S) and the consts `MVR_TIME_LIMIT_NORMAL_FPS`, `MVR_TIME_LIMIT_HIGH_FPS` (present in ml/platform/200D.101/consts.h). **Deep dive owned by a separate agent — matrix-level entry only.** |
-| Focus box hide / clean HDMI | unknown — needs QEMU | — | — | WalterSchulz drove the upstream wish; no 6D2 code | No single `FEATURE_` macro maps to this in the tree. Nearest levers are the `Off (prop)` focus-box rows above and `FEATURE_FORCE_HDMI_VGA`. **Deep dive owned by a separate agent.** |
+| MOV/MP4 29:59 recording limit override | **Done locally (2026-08-15)** | never enabled | — | stephen-e — on for 200D; addresses for 6D2 found by spike 003 | Was misclassified "stub missing": the two consts were simply never looked up. Found (`0xE042FF74`/`0xE042FF78`), enabled, **confirmed on the real camera** — recording stopped at ~60 s with a 1-min limit. patches/0001, patches/README.md. Not yet upstreamed (Track C). |
+| Focus box autohide (rear LCD) | Off | never enabled | S | evgeniimv, upstream **PR #223** (open, hardware-tested on a real 6D2) | 2-line enable of `FEATURE_LV_FOCUS_BOX_AUTOHIDE` (ml/src/all_features.h:261; driver ml/src/tweaks.c:286-313, call site ml/src/tweaks.c:1136). Works via the full-buffer RGBA overwrite (ml/src/bmp.c:211-217), not the legacy pixel scrub. See spike 003, 2026-08-15 section. |
+| Clean HDMI (focus box on external monitor) | Blocked | subsystem unported | M–L | nobody — PR #223 confirmed it does NOT extend to HDMI | ML latches Canon's panel surface once at boot (ml/src/init.c:712, ml/src/bmp.h:63-76; `_rgb_vram_info` stubs.S:256) and refreshes a fixed panel Ximr context (ml/src/bmp.c:263-266, consts.h:180); no D7 port follows the display to HDMI. Phased route in spike 003, 2026-08-15 section. |
 
 ### 5. Unported — no DIGIC 6/7/8/X port in this tree defines the required CONFIG
 
@@ -246,20 +254,27 @@ allow hidden modules".
 
 ## Counts
 
-Counted directly from the tables above (107 feature/module rows in sections 1–6).
+Counted directly from the tables above (108 feature/module rows in sections 1–6; the former
+"unknown" focus-box row split into two classified rows on 2026-08-15).
 
 | Reason | Count |
 |---|---|
-| never enabled / tested | 54 |
-| stub missing | 14 |
+| never enabled / tested | 56 |
+| stub missing | 13 |
 | hardware/firmware differs | 12 |
-| subsystem unported | 11 |
-| **Total classified** | **91** |
+| subsystem unported | 12 |
+| **Total classified** | **93** |
 | Working today, no reason needed (status On / Partial-with-no-blocker) | 15 |
-| Honestly unknown (marked "unknown — needs QEMU") | 1 |
+| Honestly unknown | 0 |
 
-The 54 in the first row includes the 9 rows of section 3, whose shared reason is stated in the prose
-above that table rather than in a cell.
+**Classification is complete: every 6D2-missing row now carries exactly one reason class.**
+The 56 in the first row includes the 9 rows of section 3, whose shared reason is stated in the prose
+above that table rather than in a cell, plus 4 rows now marked Done locally (MOV limit and the three
+debug displays — their historical reason class was `never enabled`, and it is kept for the count).
+2026-08-15 reclassifications: MOV limit `stub missing` → `never enabled` (the "missing stubs" were
+two consts nobody had looked up — found, enabled, hardware-confirmed); focus-box autohide (LCD)
+`unknown` → `never enabled` (upstream PR #223 hardware test); clean HDMI `unknown` →
+`subsystem unported` (ML's RGBA refresh path does not follow the display to HDMI on any D7 port).
 
 For scale: of the 144 effective macros on 5D3.113, **89 `FEATURE_` and 36 `CONFIG_` are absent on the
 6D2**. The tables above also cover features that exist only on the modern-DIGIC side and have no 5D3
@@ -269,55 +284,57 @@ equivalent (`FEATURE_VRAM_RGBA`, `FEATURE_DISK_LOG`, `FEATURE_SD_AUTOTUNE`,
 
 ---
 
-## Cheapest wins, in priority order — this drives Phase C
+## Next cheap wins, in priority order (2026-08-15) — this drives the rest of Phase C
 
-Ranked by (confidence it works) × (smallness of diff). Every item in tier 1 is a one-line `#define`
-in ml/platform/6D2.111/features.h against source already compiled into the binary.
+Ranked by (confidence it works) × (smallness of diff). **Excluded because already done:** the MOV
+time limit and the three debug displays (`FEATURE_SHOW_TASKS`, `FEATURE_SHOW_CPU_USAGE`,
+`FEATURE_SHOW_GUI_EVENTS`) shipped in patches/0001 and the MOV limit is confirmed on the real
+camera; their upstreaming is Track C, not a new win.
 
-**Tier 1 — proven on the same silicon, zero new addresses needed.**
+**Tier 1 — proven on this exact body, one-line diff.**
 
-1. **`FEATURE_SHOW_TASKS`** — on for 12 of 14 DIGIC 6/7/8/X ports including both D7 siblings
-   (200D, 77D). Its dependency `CONFIG_TSKMON` is already satisfied: ml/src/config-defines.h:31
-   defines it unconditionally for every camera ("Show detailed info about tasks and CPU usage"), so
-   the 200D's own `#define CONFIG_TSKMON` at ml/platform/200D.101/features.h:36 is redundant and the
-   6D2 needs no extra `CONFIG_` line. Code at ml/src/tasks.c:30,92,137 and ml/src/debug.c:1050 is
-   already in `tasks.o`/`debug.o`. Upstream's own note: "Mostly working - task display is too crowded."
-2. **`FEATURE_SHOW_CPU_USAGE`** — same 12 ports, same file, same already-satisfied `CONFIG_TSKMON`
-   dependency. Ships naturally in the same patch as #1; ml/src/tasks.c:24 guards both together with
-   `#if defined(FEATURE_SHOW_CPU_USAGE) || defined(FEATURE_SHOW_TASKS)`.
-3. **`FEATURE_SHOW_GUI_EVENTS`** — same 12 ports, ml/src/debug.c:1081. Independently useful: it is
-   the fastest way to learn the 6D2's button/GUI event codes, which several later features need.
+1. **`FEATURE_LV_FOCUS_BOX_AUTOHIDE`** — upstream PR #223 (evgeniimv) enabled exactly this line on
+   a real 6D2 and posted photos + video: focus box hides on the rear LCD. With Canon's INFO cycle
+   that makes the rear display clean. Known limit: no effect on HDMI out. Draft diff and mechanism
+   analysis in .planning/spikes/003-cheap-wins-scoping/README.md (2026-08-15 section). The only
+   candidate with same-body hardware evidence.
 
-These three are one contiguous block in ml/platform/200D.101/features.h and ml/platform/77D.110/features.h.
-Copying that block into ml/platform/6D2.111/features.h is the natural first upstream patch — a
-4-line diff with 12 cameras of precedent.
+**Tier 2 — strong sibling precedent, one small caveat each.**
 
-**Tier 2 — strong precedent, one small caveat each.**
-
-4. **`FEATURE_SHOW_FREE_MEMORY`** — on for 10 siblings. The only reference to a symbol the 6D2 lacks
+2. **`FEATURE_SHOW_FREE_MEMORY`** — on for 10 siblings. The only reference to a symbol the 6D2 lacks
    (ml/src/mem.c:1390) is inside `#ifndef CONFIG_DIGIC_678X`, so it is excluded on this body.
    Upstream's caveat is honest and already written down: "working but slightly hackish, don't yet
    have a good way to determine free stack size."
-5. **`FEATURE_DISK_LOG`** — on for 200D and M6II. Pure logging; useful infrastructure for every
-   later investigation.
-6. **`CONFIG_COPY_CONSOLE_TO_UART`** — on for 200D. Debug-rig value: gets console output out of the
+3. **`FEATURE_DISK_LOG`** — on for 200D and M6II. Pure logging; useful infrastructure for every
+   later investigation, including the spike 005 allocation blocker.
+4. **`CONFIG_COPY_CONSOLE_TO_UART`** — on for 200D. Debug-rig value: gets console output out of the
    camera without the display path, which matters while QEMU still halts before the GUI.
-7. **`FEATURE_STICKY_HALFSHUTTER`** — on for 77D. 200D's comment ("Works but likely not required")
+5. **`FEATURE_STICKY_HALFSHUTTER`** — on for 77D. 200D's comment ("Works but likely not required")
    is the reason it is low here, not any technical doubt.
-8. **`FEATURE_SHOW_IMAGE_BUFFERS_INFO`, `FEATURE_UNMOUNT_SD_CARD`** — no missing symbols, no
+6. **`FEATURE_SHOW_IMAGE_BUFFERS_INFO`, `FEATURE_UNMOUNT_SD_CARD`** — no missing symbols, no
    sibling precedent. Cheap but unproven.
 
 **Tier 3 — one address away.**
 
-9. **`FEATURE_CROPMARKS`** — blocked on exactly one const, `IMGPLAY_ZOOM_LEVEL_ADDR`. Upstream
+7. **`FEATURE_CROPMARKS`** — blocked on exactly one const, `IMGPLAY_ZOOM_LEVEL_ADDR`. Upstream
    already wrote the reason into ml/platform/6D2.111/features.h. The 200D has the address in
    ml/platform/200D.101/consts.h and eight ports enable the feature. Finding one address unlocks
    cropmarks **and** unblocks `FEATURE_SET_MAINDIAL`, `FEATURE_LV_FOCUS_BOX_FAST`, and half of
    `FEATURE_RAW_ZEBRAS` — the best value-per-address in the whole matrix.
 
-**Explicitly not a win:** `FEATURE_SD_AUTOTUNE` looks like a free enable (200D has it) but
-ml/platform/6D2.111/features.h records that it was tried and rejected — "exists, but doesn't seem to
-improve over stock speeds". Do not re-litigate it.
+**Tier 4 — module list additions, untested but zero code.**
+
+8. **Ship low-risk modules** already built for every camera (`adv_int`, `autoexpo`, `img_name`,
+   `pic_view`, `selftest`) — one line each in ml/platform/6D2.111/modules.included. `selftest`
+   first: it exists to validate a port. No 6D2-specific code in any of them, which is precisely why
+   they are untested claims until run.
+
+**Explicitly not wins:** `FEATURE_SD_AUTOTUNE` was tried and rejected on this body
+("doesn't seem to improve over stock speeds" — ml/platform/6D2.111/features.h); do not re-litigate.
+`FEATURE_SHOW_EDMAC_INFO` has no consumer in the tree — enabling it does nothing.
+
+**Sequencing note:** ml/platform/6D2.111/features.h currently carries spike 005's A/B experiment
+(four features commented out) — land nothing in that file until Track A completes.
 
 ---
 
@@ -330,6 +347,9 @@ improve over stock speeds". Do not re-litigate it.
   classified `never enabled` because the macros are off, the objects are compiled, and no symbol is
   missing. But **no DIGIC 6/7/8/X port has ever enabled any of them**, so the runtime risk is real
   and unquantified. Treat the `M` effort estimates there as a floor, not a forecast.
-- "Focus box hide / clean HDMI" has no single macro in this tree; the mapping to code is left to the
-  agent deep-diving it.
+- "Focus box hide / clean HDMI" is now mapped and split (section 4): the LCD half is
+  `FEATURE_LV_FOCUS_BOX_AUTOHIDE` (hardware-proven on a 6D2 by upstream PR #223); the HDMI half is a
+  real subsystem gap with a phased route in spike 003's 2026-08-15 section. The remaining unknowns
+  there are two measurements (does `_rgb_vram_info` change on HDMI hot-plug; do ML overlays appear
+  on HDMI at all), not classification.
 - Effort estimates are relative sizing from code shape and address counts, not measured.

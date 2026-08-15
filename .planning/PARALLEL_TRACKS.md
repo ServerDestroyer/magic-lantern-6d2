@@ -53,12 +53,31 @@ the track assignment + contention rules. State ground truth lives in
    (both clones are gitignored). Patches 0001-0003 are already applied in the
    working trees — `git apply --check --reverse` before any forward apply.
 6. Re-resolve every RAM address with `arm-none-eabi-nm` after each rebuild.
+7. **`magiclantern_simplified/` is a symlink to `ml/` — same repo.** It is NOT
+   a separate clone; treat any operation on either path as hitting the shared
+   tree. (Discovered 2026-08-15 when a Track C branch switch clobbered a
+   Track A measurement, twice.)
+8. **Branch switches in `ml/` count as builds under rule 1** — a checkout
+   swaps `platform/6D2.111` headers and empties `build/`.
+9. **Do not drop `stash@{0}` in `ml/`** ("track-C: found state...", holds the
+   pre-Track-C uncommitted state with patches 0001+0002+0004 applied) without
+   checking with Track C or Chris. Current shared tree (after Track A,
+   2026-08-15 ~16:30): branch `dev`, patches 0001+0002+0004 applied plus 0005
+   (the three `FEATURE_SHOW_*` flags commented out — they zero the allocator
+   pool in capture builds); `build/` holds the packaged capture build
+   (autoexec.bin md5 969d407d01fc2b140cdfd3b20a9f9f34). Full pre-Track-C state
+   still recoverable via the stash.
+10. Track C builds now happen only in isolated worktrees
+    `/home/chris/ml6d2/trackC-wt2` and `trackC-wt3`, never the shared tree.
+    Track C branches in the shared repo: `6d2-mov-time-limit`,
+    `d678-prop-wait-denied`, `log-d678-no-brick-spin`.
 
 ## Status per track (update in place, one line each)
 
-- A: not started (A/B untried) — next: features-off build
-- B: not started — next: gdb break at spin address
-- C: not started — next: fork + branch for MOV time-limit PR
-- D: FEATURE_MATRIX.md exists, classification IN FLIGHT; #221 scoping PARTIAL
+- A: A/B DONE (2026-08-15) — cause of the 0/0 pool is the three `FEATURE_SHOW_*` flags (leg 1 all-off: pool 9437184/5970756, capture OK; leg 2 MOV-limit-on/SHOWs-off: identical, so MOV limit + consts.h/internals.h/stubs.S all exonerated; which of the three SHOWs, and why, not narrowed). Body-ready capture package in `card_packages/capture/` (md5sums + SYNC_README inside), config saved as `patches/0005`, QEMU-verified twice (DIAG trailer, 23 mpu_send + 3 mpu_recv) — next: Track F body run (Chris), then task 7 (6D2.h + qemu-eos registration)
+- B: DONE 2026-08-15 — "spin" was a misattribution: PCs are log-d678.c logger fns (`my_DebugMsg`/`pre_isr_log`/`post_isr_log`; `_reloc` is at 0x15504C), no ML boot bug; stall did not reproduce (4/4 full boots with the exact spike-004 binary) → nondeterministic qemu-eos SGI race, fix proposal in spike 004 README §2026-08-15 (not applied)
+- C: DONE (2026-08-15) — 3 build-tested branches in the shared repo (`6d2-mov-time-limit` e6cad78b6, `d678-prop-wait-denied` 7454309f7, `log-d678-no-brick-spin` 2b32a614d, all off dev@3f24042a4, gcc 15.2.1, MOV branch symbol-verified with FEATURE_SHOW_* excluded) + 4 ready-to-post PR docs & patch copies in `.planning/prs/` — next: Chris reviews, pushes to his fork (commands in each PR doc; PR-2 body retest recommended first)
+- D: DONE (2026-08-15) — FEATURE_MATRIX classification complete (0 unknowns, counts rebuilt, new cheap-wins ranking); #221 scoped, spike 003 flipped to VALIDATED: LCD half = upstream PR #223's proven 1-line enable, HDMI half = surface/context re-latch, phased sketch + draft diff (UNBUILT) in spike README
 - E: not started
 - F: pending Chris (body run is the only human step blocking the main line)
+- F: raw video — spike 006 opened (2026-08-15 body run: patch 0004 confirmed, first valid 6D2 MLV — 25 frames, finalized), next-test spec + patch-0006 diff ready in `spikes/006-rawvideo-memory/README.md`; scheduled as BODY_TEST_PLAN Session 4, after spell capture

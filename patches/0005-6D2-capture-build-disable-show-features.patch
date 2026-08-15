@@ -1,0 +1,42 @@
+From: spike 005 task 5 A/B (Track A, 2026-08-15)
+Subject: 6D2: disable the three FEATURE_SHOW_* debug displays in capture builds
+
+Apply on top of patch 0001 (which enables them). Measured in QEMU, one variable
+per leg, addresses re-resolved with arm-none-eabi-nm per build:
+
+  four features on  (pre-A/B)  : GetMemoryInformation 0 total / 0 free at
+                                 log_start(); every _AllocateMemory fails
+                                 (2 MB..128 KB); buf NULL; no DEBUGMSG.LOG.
+  all four off          (leg 1): pool 9437184 / 5970756; 2 MB allocated
+                                 (free drops by 2097168); DIAG trailer;
+                                 23 mpu_send + 3 mpu_recv.
+  MOV limit on, SHOWs off (leg 2 + packaged ship build, probed twice):
+                                 identical healthy numbers.
+
+Verdict: FEATURE_SHOW_TASKS / FEATURE_SHOW_CPU_USAGE / FEATURE_SHOW_GUI_EVENTS
+(one or more of the three — not narrowed further) zero the allocator pool that
+log_start() draws from. FEATURE_OVERRIDE_MOVIE_30_MIN_LIMIT is exonerated, as
+are consts.h, internals.h and stubs.S (leg 1 still carried all three files'
+changes and the pool was healthy). Mechanism not established; unverified
+hypothesis is image/BSS growth colliding with the pool, not any one feature's
+runtime code.
+---
+--- a/platform/6D2.111/features.h
++++ b/platform/6D2.111/features.h
+@@ -43,8 +43,13 @@
+ // Debug displays. On for both D7 siblings (200D, 77D) and 10 other modern
+ // ports. FEATURE_SHOW_GUI_EVENTS is also the quickest way to learn this
+ // body's GUI event codes, which several unported features need.
+-#define FEATURE_SHOW_TASKS
+-#define FEATURE_SHOW_CPU_USAGE
+-#define FEATURE_SHOW_GUI_EVENTS
++// Spike 005 task 5 A/B (2026-08-15, measured in QEMU): with these three
++// enabled, GetMemoryInformation() reports 0 total / 0 free at log_start() and
++// every _AllocateMemory fails, so CONFIG_STARTUP_LOG captures nothing.
++// With them off (MOV-limit feature still on) the pool is 9437184/5970756 and
++// capture works. Keep them off in any CONFIG_STARTUP_LOG build.
++//#define FEATURE_SHOW_TASKS
++//#define FEATURE_SHOW_CPU_USAGE
++//#define FEATURE_SHOW_GUI_EVENTS
+
+ #undef CONFIG_ADDITIONAL_VERSION

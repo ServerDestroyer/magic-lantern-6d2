@@ -245,3 +245,115 @@ falls inside `_reloc`, the copied-region length constants in
 `run_qemu.py --boot` looks for `platform/6D2.111/build/sd.qcow2` and `cf.qcow2`,
 so put the built image there under those names. Capture with `-d debugmsg` —
 the serial log alone stops at the Canon banner and hides every ML message.
+
+---
+
+## 2026-08-15 (evening) — Track B follow-up: the "spin" was a misattribution; no ML boot bug
+
+The planned gdb session was run, against **the exact binary from the table
+above** (md5 `6f6534f8dd9c30023675fa5df9020a33`, recovered together with its
+card images from the original session's scratch dir) and against a fresh plain
+build. All work was done in a scratch tree, `/home/chris/ml6d2/scratch-ml-spike004`
+(full copy of `ml/`), with a private qemu instance (own monitor socket, own
+card images, `-gdb tcp::1244`) — the shared tree and shared monitor socket were
+not touched.
+
+### 1. The two "spin PCs" are log-d678.c's logger functions, not `_reloc`
+
+Resolved by disassembling guest RAM over gdb and matching instruction-for-
+instruction against source (this build has `CONFIG_STARTUP_LOG=y`, so
+`src/log-d678.c` is compiled in — its **static** functions are invisible to
+`6D2_111.sym`, which is why symbol resolution failed above; they live in the
+sym-file gap between `edmac_copy_rectangle_cbr_start` 0x1035F9 and `log_start`
+0x103A01):
+
+| PC | actually is | proof |
+|---|---|---|
+| `0x001037A8` | `my_DebugMsg` (log-d678.c) — TB starting right after `blx cli_spin_lock` | contains the verbatim `mrs r3, CPSR; tst r3, #80; b.n <self>` dead-interrupt check, then `mrc p15,0,r3,c0,c0,5; and r3,#3` = the inlined `get_cpu_id()` for the `"[%d] "` prefix (log-d678.c:98) |
+| `0x0010390C` | `pre_isr_log` (log-d678.c:233) | opens with `get_cpu_id()`, then the exact isr filter `bic r3,r0,#0x100; cmp #0x2A; movw r3,#0x147; cmp; cmp r0,#0x1B`, then the `mpu_send_ring_buffer` drain loop |
+| `0x001039A0` | `post_isr_log` (log-d678.c:264) | `movw r3,#0x147; cmp r0,r3`, then `get_cpu_id()`, then the `mpu_recv_ring_buffer` drain |
+
+The real `_reloc` buffer in this binary is at **0x15504C–0x15534C** (gdb
+`find` over 0xE0F90–0x400000 for the words at ROM 0xE0040010 hits 0x15505C,
+i.e. `_reloc+0x10`; `FIRMWARE_ENTRY_LEN` = 0x300). Nowhere near the "spin" PCs.
+
+So the MPIDR reads were **per-event logger overhead** — one read per logged
+DebugMsg (my_DebugMsg) plus one per interrupt (the pre/post ISR hooks, which
+Canon calls on both cores; the source comment on `post_isr_log` even says
+"this runs on both CPU cores"). They are a signature of a *working*
+`CONFIG_STARTUP_LOG` boot, not of a hang: healthy full boots measured today
+show 1700–3800 RAM-address MPIDR reads. The 208 in the original run was low.
+
+### 2. The GlobalVectorInit stall did not reproduce — it is nondeterministic
+
+Same `autoexec.bin`, same card qcow2 files, same `qemu-system-arm` (built
+11:44, before the original 12:46 run — the qemu binary was never rebuilt):
+
+| run | outcome |
+|---|---|
+| exact old binary, 4 runs | **4/4 full boots** — past GlobalVectorInit, through PropMgr to the known spike-001 soft assert (`ErrorSend (101, ABORT)`), ML `log_dump` task writes `DEBUGMSG.LOG` at t≈15 s |
+| fresh plain build (no STARTUP_LOG, features.h as-is), 2 runs | 2/2 full boots, ML banner prints, no recurring RAM MPIDR reads at all |
+
+Healthy boots carry only **7–12 `SGI 0xa` events total**. The original run's
+"continuous SGI 0xa ping-pong" is therefore genuinely anomalous — but it was a
+*lost-wakeup storm*, not a spin in ML code.
+
+### 3. Verdict on the two open readings: both wrong as stated
+
+- **ML `_reloc`/`cstart` bug — refuted.** The relocation demonstrably works:
+  on every boot CPU0's early MPIDR trace hits `_reloc+0xA` and `_reloc+0xFC`
+  (the copied `firmware_entry`/`cstart` identity checks), while **CPU1 executes
+  the ROM originals** (`0xE004000A`, `0xE00400FC`): ROM `firmware_entry` reads
+  MPIDR at 0xE0040014, a non-zero core branches at 0xE0040034 straight to ROM
+  `cstart` 0xE00400FC, whose core≠0 path is `blx 0xE043A6D0` into ROM. CPU1
+  never touches ML's copy, so `boot-d678.c`'s "our code only runs on CPU0"
+  assumption holds on the 6D2.
+- **"qemu-eos secondary-core gap that only ML's copy exercises" — refuted as
+  stated.** CPU1 runs, and runs ROM code; ML's copy is not involved.
+
+What remains is a **nondeterministic cross-core interrupt-delivery race in
+qemu-eos** (reading (b) in spirit, but ML-independent — plausibly the same
+defect class behind the Core-1 `EngInit` wall in `PU1_INVESTIGATION.md`):
+
+- `hw/eos/eos.c:2825` — `static int iar = 0x20;` — a **single global IAR slot**
+  shared by both CPUs' GIC CPU interfaces (`eos_handle_intengine_gic`, mapped
+  for DIGIC 7 at 0xC1000000, `model_list` mmio entry at eos.c:557).
+- `ICDSGIR` write (eos.c:2961 `case 0xf00`) sets the shared `iar` and raises
+  `CPU_INTERRUPT_HARD` on the *other* CPU; a `GICC_IAR` read (eos.c:2854) by
+  **either** CPU returns and consumes it — cross-consumption is possible.
+- The Canon intengine model (eos.c:~2742, reads of 0xD4011000/0xD5011000) does
+  `cpu_reset_interrupt(CURRENT_CPU, CPU_INTERRUPT_HARD)` unconditionally —
+  the **same flag** the SGI path asserts, so acking a device interrupt can
+  silently cancel a pending SGI.
+
+A lost SGI 0xa during the CPU0↔CPU1 DryOS bring-up handshake — right where
+CPU1 starts doing real task work (`GlobalVectorInit` is logged from CPU1) —
+leaves one core waiting while its peer retries the kick: continuous SGI 0xa
+ping-pong with zero forward progress. That is exactly the recorded stall
+signature, and it is timing-dependent, hence unreproducible on demand.
+
+### 4. Proposed qemu-side change (NOT applied — shared tree)
+
+In `qemu-eos/hw/eos/eos.c`, `eos_handle_intengine_gic`:
+
+1. Line 2825: `static int iar = 0x20;` → `static int iar[2] = {0x20, 0x20};`
+2. `GICC_IAR` case (lines 2854–2891): read/clear `iar[current_cpu->cpu_index]`
+   only.
+3. `GICC_EOIR` case (line 2894): reset `iar[current_cpu->cpu_index] = 0x20;`.
+4. `ICDSGIR` case (lines 2961–2984): write `iar[target]` where `target` is the
+   CPU being interrupted (current code always interrupts the other core; keep
+   that, but store the SGI number in that CPU's slot, not globally).
+5. Harder, later: stop the Canon-intengine read path (eos.c:2742) from
+   clearing `CPU_INTERRUPT_HARD` while that CPU still has a pending GIC SGI —
+   needs a per-CPU pending flag; or adopt QEMU's `intc/arm_gic.c` outright, as
+   the FIXME at eos.c:2813 already suggests.
+
+This is a proposal only; validating it requires making the stall reproducible
+first (e.g. stress-boot in a loop, or force adversarial vCPU scheduling with
+`-accel tcg,thread=single` vs default MTTCG).
+
+Scratch artifacts kept: `/home/chris/ml6d2/scratch-ml-spike004/` (full ml
+copy + plain build + card images; `old-bin/` holds the exact spike-004 binary,
+its ELF, sym and card images). Probe logs in this session's scratchpad
+(`qemu-run-oldbin.log`, `qemu-run-newbuild-control.log`, `rep1..3.log`,
+`probe_oldbin.out`).

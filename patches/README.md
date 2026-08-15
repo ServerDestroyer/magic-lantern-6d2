@@ -7,9 +7,11 @@ Patches live here instead.
 | # | Target | Subject | State |
 |---|---|---|---|
 | 0001 | `ml/` | MOV time limit, debug flags, two source fixes | **Tested on the real camera** — but SPLIT before upstreaming: Track A's A/B measured the three `FEATURE_SHOW_*` flags causing a 0/0 memory pool at `log_start()` in `CONFIG_STARTUP_LOG` builds (MOV limit exonerated; normal boots unaffected). Ship the MOV-limit + source-fix half alone; hold the SHOW flags until the pool interaction is understood. |
-| 0002 | `ml/` | `CONFIG_STARTUP_LOG` MPU-spell capture build | Builds clean; blocked, see spike 005 |
+| 0002 | `ml/` | `CONFIG_STARTUP_LOG` MPU-spell capture build | Working in QEMU when combined with 0005; body package ready |
 | 0003 | `qemu-eos/` | `outils.py`: honour `ML_PLATFORM_DIR` | Works; upstreamable one-liner |
 | 0004 | `qemu-eos/` | 6D2 `debugmsg.gdb`: EstimatedSize workaround + fix wrong `assert_log` address | **Verified live in QEMU**; both parts upstreamable |
+| 0004 | `ml/` | `prop_request_change_wait`: skip timeout on denied writes (numbering collision with the qemu-eos 0004, kept as-is) | Applied in tree |
+| 0005 | `ml/` | Capture build: disable the three `FEATURE_SHOW_*` flags (they zero the allocator pool — spike 005 A/B) | **Measured in QEMU**, both legs |
 
 ## Applying
 
@@ -106,7 +108,10 @@ Deliberately not changed: `if (!(read_cpsr() & 80))` is dead (80 is decimal
 0x50, overlapping CPSR M[4], set in every AArch32 mode). Making it live starts
 dropping messages; only its `while(1)` became a return.
 
-**Currently blocked** — see `.planning/spikes/005-mpu-spell-capture/`.
+**Unblocked 2026-08-15** — the 0/0-pool allocation failure was the three
+`FEATURE_SHOW_*` flags (see 0005). With 0001 + 0002 + the ml 0004 + 0005
+applied, capture is verified working in QEMU; body-run package in
+`card_packages/capture/`. See `.planning/spikes/005-mpu-spell-capture/`.
 
 ## 0003 — `qemu-eos` `outils.py`: honour `ML_PLATFORM_DIR`
 
@@ -153,3 +158,19 @@ removes a symptom without booting the camera — `startupInitializeComplete` was
 in all 8 test runs — and all three hypotheses around it were refuted on adversarial
 review. It is documented and commented-out in `tools/qemu-6d2-boot.gdb` instead.
 See `PU1_INVESTIGATION.md`.
+
+## 0005 — Capture build: disable the three `FEATURE_SHOW_*` flags
+
+Apply on top of 0001. Spike 005 task 5 A/B (measured over the qemu monitor,
+addresses re-resolved per build): with `FEATURE_SHOW_TASKS`,
+`FEATURE_SHOW_CPU_USAGE`, `FEATURE_SHOW_GUI_EVENTS` enabled,
+`GetMemoryInformation()` reports 0 total / 0 free at `log_start()` and every
+`_AllocateMemory` fails, so `CONFIG_STARTUP_LOG` captures nothing. With them
+off the pool reads 9437184/5970756, the 2 MB buffer allocates (free drops by
+exactly 2097168), and the capture is complete (DIAG trailer, 23 `mpu_send` +
+3 `mpu_recv`). `FEATURE_OVERRIDE_MOVIE_30_MIN_LIMIT` is exonerated — leg 2 and
+the packaged ship build carry it and are healthy — as are `consts.h`,
+`internals.h`, `stubs.S` (leg 1 carried all three and was healthy). Which of
+the three flags does it, and why, is not narrowed; unverified hypothesis is
+image/BSS growth colliding with the pool. The body-run card package built from
+this configuration is in `card_packages/capture/`.

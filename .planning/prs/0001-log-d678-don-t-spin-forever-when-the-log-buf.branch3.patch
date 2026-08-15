@@ -1,0 +1,66 @@
+From d74951d52f39538ff6171db6238dacbd14d82ca3 Mon Sep 17 00:00:00 2001
+From: Chris <christopher@deocracy.org>
+Date: Sat, 15 Aug 2026 16:22:27 -0700
+Subject: [PATCH 1/2] log-d678: don't spin forever when the log buffer
+ allocation fails
+
+log_start() ended with "while (!buf);". On models that allocate the
+buffer with _AllocateMemory() (everything without a hardcoded address),
+an allocation failure therefore hangs boot_post_init_task in an
+infinite loop - no LED activity, no display, indistinguishable from a
+bricked camera.
+
+That failure is reachable in practice: with this logger wired into a
+full 6D2.111 ML build, GetMemoryInformation() reported 0 total / 0
+free at log_start() time and every _AllocateMemory() from 2 MB down to
+128 KB failed (measured through the qemu monitor via the logger's own
+before/after pool counters; reproduced on four consecutive builds).
+
+Bail out instead: set buf_size = 0 and return before patching DebugMsg
+or installing the ISR hooks. my_DebugMsg() already drops everything
+while buf is NULL, and log_finish() now returns early in the same
+case (nothing was installed, so there is nothing to undo or save).
+The camera then boots normally, just without a startup log - losing
+the log is the cheaper failure.
+---
+ src/log-d678.c | 17 ++++++++++++++++-
+ 1 file changed, 16 insertions(+), 1 deletion(-)
+
+diff --git a/src/log-d678.c b/src/log-d678.c
+index 9d2d76949..2577e5843 100644
+--- a/src/log-d678.c
++++ b/src/log-d678.c
+@@ -313,7 +313,17 @@ void log_start()
+ #endif
+     qprintf("Logging buffer: %X - %X\n", buf, buf + buf_size - 1);
+     qprintf("Free memory: %X\n", GetFreeMemForAllocateMemory());
+-    while (!buf);
++    if (!buf)
++    {
++        /* Allocation failed.  This used to be "while (!buf);" - an infinite
++         * spin inside boot_post_init_task with no LED and no display,
++         * indistinguishable from a bricked camera.  Give up on logging
++         * instead: my_DebugMsg() drops everything while buf is NULL, and
++         * log_finish() returns early for the same case, so the camera
++         * boots normally, just without a startup log. */
++        buf_size = 0;
++        return;
++    }
+ 
+     /* override Canon's DebugMsg (requires RAM address) */
+     uint32_t old_int = cli();
+@@ -359,6 +369,11 @@ void log_start()
+ 
+ void log_finish()
+ {
++    /* log_start() bailed out on allocation failure: nothing was patched or
++     * installed, so there is nothing to undo and nothing to save. */
++    if (!buf)
++        return;
++
+ #ifdef CONFIG_MMIO_TRACE
+     io_trace_uninstall();
+     io_trace_dump();
+-- 
+2.54.0
+

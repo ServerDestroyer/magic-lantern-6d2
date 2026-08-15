@@ -3,7 +3,7 @@ spike: 003
 name: cheap-wins-scoping
 type: standard
 validates: "Given the MOV time limit and focus-box/clean-HDMI asks, when the responsible code paths are traced in ML and the 6D2 ROM, then each has a concrete implementation route and effort estimate"
-verdict: PARTIAL
+verdict: VALIDATED
 related: [002]
 tags: [features, scoping, upstream]
 ---
@@ -484,3 +484,215 @@ recording still stops at 29m59s" — not damage.
 record, and see whether it stops at 60 s. That one test collapses all three
 residual risks at once — cheaper and more conclusive than any further static
 analysis.
+
+*(Outcome: done. Confirmed on hardware 2026-08-15 — recording stopped at ~60 s.
+See patches/README.md, patch 0001.)*
+
+---
+
+## 2026-08-15 — Feature 2 re-scoped against upstream PR #223 (scoping now complete)
+
+Fetched live from GitHub this session (`gh api .../issues/221`, `/issues/221/comments`,
+`/pulls/223`, PR diff and comments). This corrects part of the analysis above and
+replaces the Feature 2 implementation route. Verdict flipped PARTIAL → VALIDATED:
+both features now have a concrete, evidence-backed route.
+
+### Upstream state this spike had not seen
+
+Issue #221's author **evgeniimv** did not stop at the issue. He opened
+**PR #223** (2025-08-31, still open, `mergeable_state: clean`) — a 2-line diff
+adding `#define FEATURE_LV_FOCUS_BOX_AUTOHIDE` to `platform/6D2.111/features.h` —
+built it, ran it **on a real 6D Mark II**, and posted photos plus a video:
+
+- **On the rear LCD it works.** The focus box disappears from LiveView.
+  Combined with Canon's own INFO cycle, the LCD is clean.
+- **On HDMI output it does not.** His follow-up comment (2025-08-31 19:36):
+  "actually Focus Box remains on the screen, when used with HDMI output. This
+  feature only clears Focus Box from the Canon display. Basically means we need
+  full fledged Clear HDMI feature."
+- **reticulatedpines replied** (2025-09-01): "the newer cams draw in a different
+  way, and it means our old code doesn't work. If you trace what
+  FEATURE_LV_FOCUS_BOX_AUTOHIDE enables, the work is done in clear_lv_afframe(),
+  tweaks.c" — and invited him to Discord for the graphics-layer discussion.
+  No further activity since 2025-09-01.
+- Side observation in the PR: a flaky `EFLensComTask: stack warning: free=232
+  used=792` on his build. reticulatedpines points at `ml/src/tskmon.c:195`,
+  which already has 6D2/200D exceptions for near-limit stock tasks
+  (`RTCMgr`, `idle`) but not this one. Watch for it in any body test.
+
+### Two corrections to this spike's own Feature 2 analysis
+
+1. **"Flipping the existing feature flag produces dead code" is wrong for the
+   LCD.** PR #223 proves the 2-line enable hides the box on the camera display.
+   The four-blocker analysis above correctly describes why the *legacy D4/5
+   mechanisms* cannot run, but missed the mechanism that does the work on a
+   `FEATURE_VRAM_RGBA` body (next section).
+2. **The effort framing inverts.** The "2-5 days of ROM reversing" route above
+   is not the smallest viable implementation — it is the fallback. The LCD half
+   of #221 is a hardware-proven 2-line diff; the open engineering problem is
+   specifically **HDMI**.
+
+### The actual LCD mechanism on a VRAM_RGBA body (verified in source)
+
+- `bmp_vram()` on RGBA bodies returns ML's own malloc'd 8bpp indexed buffer,
+  not Canon VRAM: `ml/src/bmp.c:123-138` (`bmp_vram_indexed + BMP_HDMI_OFFSET`,
+  allocated in `bmp_init()`, `ml/src/bmp.c:1479-1487`).
+- At boot, ML latches Canon's GUI-layer MARV **once**: `rgb_vram_preinit()`
+  (`ml/src/bmp.h:63-76`) copies `_rgb_vram_info` → `rgb_vram_info`, spun on at
+  `ml/src/init.c:712`. On 6D2, `_rgb_vram_info` is `DATA_PTR 0x100b8`
+  (`ml/platform/6D2.111/stubs.S:256`), and the stub's own comment says it is
+  **"written to in InitializeScreen"** — i.e. Canon rewrites it when the display
+  stack re-initializes.
+- A 20 fps task (`redraw_task`, `ml/src/bmp.c:113-114`) converts the indexed
+  buffer into that MARV's RGBA `bitmap_data` and kicks the compositor with
+  `XimrExe((void*)XIMR_CONTEXT)` (`ml/src/bmp.c:263-266`;
+  `XIMR_CONTEXT 0x9b01c`, `ml/platform/6D2.111/consts.h:180`).
+- The copy has two modes (`ml/src/bmp.c:211-256`): when `zebra_should_run()`
+  (`ml/src/zebra.c:3618` — LV idle + global draw on) it writes **every** pixel
+  including fully-transparent ones; otherwise it skips transparent pixels.
+  Only the write-everything mode can *remove* Canon's pixels from the shared
+  layer (6D2 has no `CONFIG_COMPOSITOR_DEDICATED_LAYER`, so ML writes into
+  Canon's own layer 0). That full-buffer overwrite is what erases Canon's AF
+  frame; the white-pixel scrub in `clear_lv_afframe()` (`ml/src/tweaks.c:313`)
+  only touches ML's own buffer on these bodies. The feature flag's real
+  contribution is the dirty-tracking driver (`ml/src/tweaks.c:286-311`) plus
+  the task-loop call site (`ml/src/tweaks.c:1136-1138`) that forces the erase
+  cycle after the AF frame moves (`afframe_set_dirty()` callers:
+  `ml/src/shoot.c:652`, `ml/src/lens.c:238`, `ml/src/vram.c:147`,
+  `ml/src/zebra.c:3973`).
+
+### Why HDMI still shows the box — ranked, measurable hypotheses
+
+1. **Stale surface.** `rgb_vram_info` is latched once at boot from
+   `_rgb_vram_info` (0x100b8), which Canon rewrites in `InitializeScreen`.
+   HDMI hot-plug re-initializes the display stack; ML keeps writing the old
+   panel-sized surface. Predicts: ML overlays are entirely absent from HDMI —
+   which matches evgeniimv's report.
+2. **Stale Ximr context.** `XIMR_CONTEXT 0x9b01c` is a fixed panel context;
+   the HDMI output path may composite through a different context, so
+   `XimrExe(XIMR_CONTEXT)` refreshes the wrong output. Same prediction.
+3. **Separate layer for HDMI OSD.** Canon may build the external-monitor OSD
+   from a different input layer that ML's overwrite never touches. Predicts:
+   even a correctly re-latched surface would not clear the box → fall back to
+   the ROM-patch route above.
+
+Sibling ports document exactly this structure: `ml/platform/RP.160/consts.h:70-118`
+(per-device VRAM pointers `DV_VRAM_PANEL` / `DV_VRAM_LINE` / `DV_VRAM_EVF`,
+"HDMI is referenced as 'Line' in Canon functions", `DispDev` type field) and
+`ml/platform/200D.101/consts.h:108-113` (`DISP_VRAM_STRUCT_PTR` via the
+`"CurrentImgAddr : %#08x"` string; "the constant should be dependent on what
+display is in use"). The 6D2 has none of these reversed yet.
+
+ROM anchors for the HDMI path (string offsets in `roms/6D2/ROM0.BIN`,
+base `0xE0000000`, found this session, read-only):
+
+| Address | String | Use |
+|---|---|---|
+| `0xE00AB0B0` | `CurrentImgAddr` | Recover `DISP_VRAM_STRUCT_PTR` per the 200D method |
+| `0xE019319D` | `VramState` | Per-device buffer listing evproc (RP method) |
+| `0xE04C61DC` | `InitializeScreen` | The writer of `_rgb_vram_info`; same module as `RefreshVrmsSurface` (`0xE04C77D0`, stubs.S:250) |
+| `0xE00B3AFC` | `DispDev` | Display-device type structure |
+
+### What the 6D2 already has vs needs
+
+Already in `ml/platform/6D2.111/stubs.S`: `RefreshVrmsSurface` (0xe04c77d0),
+`XimrExe` (0xe022d5d0), `winsys_sem` (0x100b4), `display_refresh_needed`
+(0x100cc), `_rgb_vram_info` (0x100b8), plus `XIMR_CONTEXT` in consts.h.
+**Nothing further is needed for the LCD phase.** The HDMI phase needs the
+active-surface / context discovery above; no new stubs can be named until the
+phase 2 measurement below says which hypothesis holds.
+
+### Implementation sketch (file-by-file; next session can code this without re-research)
+
+**Phase 1 — LCD focus-box autohide (S; mirror of upstream PR #223).**
+Draft diff — **UNBUILT / UNTESTED in this tree** (hardware-proven upstream by
+the PR author on a real 6D2):
+
+    --- a/platform/6D2.111/features.h
+    +++ b/platform/6D2.111/features.h
+    @@ (after the FEATURE_POWERSAVE_LIVEVIEW block, mirroring PR #223's placement)
+    +// Upstream PR #223 (evgeniimv, tested on a real 6D2): hides Canon's AF frame
+    +// on the rear LCD ~1-2 s after it moves. With Canon's INFO cycle this gives a
+    +// clean rear display. Known limitation: NO effect on HDMI output (issue #221
+    +// stays open for that half).
+    +#define FEATURE_LV_FOCUS_BOX_AUTOHIDE
+
+Notes: no prop writes anywhere in the enabled path (`clear_lv_afframe()` only
+reads), so `property_whitelist.h` is untouched — `all_features.h:251-267` groups
+this flag under `CONFIG_PROP_REQUEST_CHANGE`, but that gate is about its
+*neighbours* (snap/zoom features write `PROP_LV_AFFRAME`); 6D2 defines the
+CONFIG anyway. Menu appears under Prefs → Focus box settings
+(`ml/src/tweaks.c:1995`). **Contention:** `platform/6D2.111/features.h` is
+currently carrying spike 005's A/B experiment (four features commented out) —
+do not apply anything to that file until Track A finishes.
+
+**Phase 2 — one measurement build (S; decides the HDMI route).**
+Add a temporary debug print (Debug menu or console) showing, before and after
+HDMI hot-plug: `MEM(0x100b8)` vs the cached `rgb_vram_info`, plus
+`rgb_vram_info->width/height`, plus `hdmi_code`. One body session with an HDMI
+monitor then discriminates the hypotheses:
+
+- `_rgb_vram_info` changed and ML overlays absent on HDMI → hypothesis 1 →
+  phase 3a.
+- Unchanged, overlays still absent → hypothesis 2 → phase 3b.
+- Re-latching in a debugger changes nothing → hypothesis 3 → phase 4.
+
+Also record whether Canon's INFO cycle affects the HDMI picture at all on this
+body (issue #221 assumes it does; nobody has stated it for HDMI specifically).
+
+**Phase 3a — re-latch the surface on display change (M; likely ~30-60 lines).**
+
+- `ml/src/bmp.h`: declare `void rgb_vram_reinit(void);`
+- `ml/src/bmp.c`: implement — re-read `_rgb_vram_info` (non-XCM path of
+  `rgb_vram_preinit()`), swap `rgb_vram_info` if changed, log the new MARV's
+  `width/height`. NULL-guard: keep the old pointer if Canon's is transiently
+  NULL mid-reinit.
+- `ml/src/vram.c:716-724`: in `PROP_HANDLER(PROP_HDMI_CHANGE)` and
+  `PROP_HANDLER(PROP_HDMI_CHANGE_CODE)`, call `rgb_vram_reinit()` under
+  `#ifdef FEATURE_VRAM_RGBA`.
+- `ml/src/bmp.c:243-256`: derive the copy extent from
+  `rgb_vram_info->width/height` instead of the assumed 960×540
+  (`BMP_VRAM_SIZE`); the DIGIC X loop at `ml/src/bmp.c:220-241` is the
+  row-stride template. Without this, a 1920×1080 HDMI surface gets a
+  quarter-height garbled overlay — visual only, but useless.
+
+**Phase 3b — find the HDMI Ximr context (M).** Disassemble
+`RefreshVrmsSurface` (0xe04c77d0) and `InitializeScreen` (0xE04C61DC) for the
+context-selection path; a second XimrContext or a rewritten field inside
+0x9b01c will show up there. Then pass the live context to `XimrExe()` instead
+of the fixed constant.
+
+**Phase 4 — suppress Canon's AF-frame draw in ROM (L; the original route
+above).** Unchanged: anchors `ChangeVisibleAfFrameTouchWidget` (0xE06E6DA8),
+`SetDisplayAFPointsToWinSystem` (0xE039AEB8) etc.; MMU patch via
+`apply_patches()`. Kills the box on *every* output at the source, independent
+of ML's refresh loop. Now strictly a fallback: only if phase 3 dead-ends, or if
+upstream wants Canon-level suppression.
+
+### Risk
+
+- Phase 1: minimal. No prop writes, no ROM patches, RAM-only drawing; already
+  run on real 6D2 hardware upstream. Watch for the `EFLensComTask` stack
+  warning noted in the PR.
+- Phase 3: RAM-only writes into Canon's GUI surface; worst case is visual
+  garbage on the external monitor, recovered by reboot. No brick vector.
+- Phase 4: MMU ROM patch; same machinery as the (now hardware-proven) MOV
+  limit, fails loudly via `E_PATCH_OLD_VALUE_MISMATCH`.
+
+### Body test (Chris, ~15 min, after Track A frees the build tree)
+
+1. Build with phase 1 (+ phase 2 print), sync `build/zip/ML/` + `autoexec.bin`.
+2. LiveView, move the focus box (touch) → box shows, then vanishes within ~2 s
+   on the LCD. INFO-cycle to the cleanest state → LCD fully clean.
+3. Connect the HDMI monitor. Record: (a) is the box visible on HDMI (expected
+   yes, per PR #223); (b) do ML overlays/menu appear on HDMI at all (the single
+   most informative observation); (c) phase 2 debug values before/after plug.
+4. No card format in-camera; normal shutdown.
+
+### Status
+
+Feature 1: **shipped and hardware-confirmed** (patch 0001, 2026-08-15).
+Feature 2: scoping **complete** — LCD half is a proven 2-line enable waiting on
+the build tree; HDMI half has a phased, measurable route with named files,
+addresses, and a decision procedure. Remaining unknowns are exactly the two
+measurements phase 2 exists to take.

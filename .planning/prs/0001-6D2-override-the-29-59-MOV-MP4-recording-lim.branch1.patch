@@ -1,0 +1,68 @@
+From e6cad78b673938aa3ae1dec4ab1483c6ed8d30da Mon Sep 17 00:00:00 2001
+From: Chris <christopher@deocracy.org>
+Date: Sat, 15 Aug 2026 16:14:34 -0700
+Subject: [PATCH] 6D2: override the 29:59 MOV/MP4 recording limit
+
+Add MVR_TIME_LIMIT_NORMAL_FPS / MVR_TIME_LIMIT_HIGH_FPS for 6D2 1.1.1
+and enable FEATURE_OVERRIDE_MOVIE_30_MIN_LIMIT, wiring up the existing
+movtweaks.c implementation.
+
+The addresses are the two recording time limits (in ms) in a ROM0
+literal pool. Searching ROM0 for 1799000 (0x1b7358, 29m59s) and 449000
+(0x6d9e8, 7m29s) - the exact .old_value fields movtweaks.c asserts
+against - finds each byte pattern exactly once in the whole 32 MiB
+image, adjacent and in that order, so there is no competing candidate.
+Both are read by a two-armed getter at 0xe042fee8: the beq at
+0xe042fef0 selects normal vs high FPS, and each arm is an
+"ldr r0, [pc, #128]" whose literal target resolves to 0xe042ff74 and
+0xe042ff78 respectively. Verified by decoding the instructions, not by
+pattern-matching bytes.
+
+Tested on a real 6D2 (firmware 1.1.1): with the limit set to 1 min,
+recordings stopped on their own at ~60 s. apply_patches() validated
+.old_value on the body without tripping E_PATCH_OLD_VALUE_MISMATCH,
+which independently confirms both addresses against this body's ROM.
+A wrong address fails loudly and rolls back atomically rather than
+patching anything.
+---
+ platform/6D2.111/consts.h   | 10 ++++++++++
+ platform/6D2.111/features.h |  4 ++++
+ 2 files changed, 14 insertions(+)
+
+diff --git a/platform/6D2.111/consts.h b/platform/6D2.111/consts.h
+index 549265807..2384a5f9b 100644
+--- a/platform/6D2.111/consts.h
++++ b/platform/6D2.111/consts.h
+@@ -131,6 +131,16 @@ extern int winsys_bmp_dirty_bit_neg;
+ //#define MVR_LAST_FRAME_SIZE (*(int*)(512 + MVR_752_STRUCT))
+ #define MVR_BYTES_WRITTEN MEM((212 + MVR_190_STRUCT))
+ 
++// Recording time limits, in ms, in a literal pool in ROM0.
++// Both are read by a two-armed getter at 0xe042fee8: the beq at 0xe042fef0
++// selects normal vs high FPS, and each arm is an "ldr r0, [pc, #128]".
++// Located by searching ROM0 for 1799000 (29m59s) and 449000 (7m29s): each byte
++// pattern occurs exactly once in the whole 32MB image, adjacent and in this
++// order, so there is no competing candidate. Verified by decoding both literal
++// loads and confirming their computed targets.
++#define MVR_TIME_LIMIT_NORMAL_FPS 0xe042ff74
++#define MVR_TIME_LIMIT_HIGH_FPS 0xe042ff78
++
+ 
+ // SJE new stuff added after we have ML menus working!
+ // Not needed for early code.
+diff --git a/platform/6D2.111/features.h b/platform/6D2.111/features.h
+index 14675860b..af8fc5fab 100644
+--- a/platform/6D2.111/features.h
++++ b/platform/6D2.111/features.h
+@@ -36,4 +36,8 @@
+ 
+ #define CONFIG_AUTOBACKUP_ROM
+ 
++// We are able to override the MOV / MP4 29:59 limit
++// (needs MVR_TIME_LIMIT_NORMAL_FPS / MVR_TIME_LIMIT_HIGH_FPS in consts.h)
++#define FEATURE_OVERRIDE_MOVIE_30_MIN_LIMIT
++
+ #undef CONFIG_ADDITIONAL_VERSION
+-- 
+2.54.0
+

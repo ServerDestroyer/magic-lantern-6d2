@@ -1,0 +1,54 @@
+From 7454309f739abe94d82f9d29f0b396ba1bdd6c2c Mon Sep 17 00:00:00 2001
+From: Chris <christopher@deocracy.org>
+Date: Sat, 15 Aug 2026 16:21:17 -0700
+Subject: [PATCH] property: don't wait out the timeout on writes denied by the
+ whitelist (D678)
+
+On DIGIC 678X ports, prop_request_change() silently drops any write to
+a property that is not in the port's prop_write_allow[] whitelist.
+prop_request_change_wait() still polls for the ack afterwards - an ack
+that can never arrive, because no write was issued - so every denied
+write burns the full timeout.
+
+The practical impact: PROP_ICU_UILOCK is whitelisted on no DIGIC 7
+body, so every gui_uilock() call is a 2000 ms stall. mlv_lite wraps
+each buffer reallocation in a gui_uilock() pair from its polling loop,
+which turns raw-video startup into a chain of 2 s freezes. Diagnosed
+on a 6D2 from on-camera console output: repeated 'UILock: ... =>
+00000000 (!!!)' (gui-common.c's mismatch marker) immediately before a
+freeze at SRM allocation.
+
+Bail out before issuing the write instead: if the property is not
+whitelisted the change is known not to happen, and waiting for its ack
+is pure delay. Returning 0 keeps the existing 'not confirmed' contract
+for callers. No new writes are issued anywhere; the change only waits
+less.
+
+Tested: builds clean for 6D2.111; deployed to a real 6D2, on-camera
+retest of the raw-video path still pending.
+---
+ src/property.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/src/property.c b/src/property.c
+index f824dfa25..2a96edd25 100755
+--- a/src/property.c
++++ b/src/property.c
+@@ -409,6 +409,14 @@ ok:
+ 
+ int prop_request_change_wait(unsigned property, const void* addr, size_t len, int timeout)
+ {
++#ifdef CONFIG_DIGIC_678X
++    /* On D678, prop_request_change() silently drops writes to properties not
++     * in prop_write_allow[].  Waiting for an ack from a write that was never
++     * issued just burns the full timeout (2s per gui_uilock() call, from
++     * mlv_lite's polling loop among others).  Bail out up front instead. */
++    if (!is_prop_allowed(property))
++        return 0;
++#endif
+     prop_reset_ack(property);
+     prop_request_change(property, addr, len);
+     
+-- 
+2.54.0
+
