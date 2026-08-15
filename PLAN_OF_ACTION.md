@@ -1,13 +1,20 @@
 # 6D Mark II — Magic Lantern Plan of Action
 
-## Status (2026-08-15 session close)
+## Status (2026-08-15)
+
+**Live status ledger is now `.planning/ROADMAP.md`** — this file keeps the
+narrative, the build traps, and the reasoning. Update both when state changes;
+this header block has already gone stale twice in one day.
 
 - Done: `ml/` and `qemu-eos/` cloned; `discord-bot/` read-only logger built
-  and verified (see `discord-bot/README.md`).
-- Waiting on Chris: (1) Discord dev-portal setup + admin invite ask per the
-  README; (2) ROM dump from the camera (section 1 below).
-- Next session starts at Phase A step 1: add ARM toolchain to NixOS, build ML
-  for 6D2.
+  and verified (see `discord-bot/README.md`); ROM dumps recovered and verified;
+  toolchain via `shell.nix`; **ML built for 6D2** (Phase A step 2); qemu-eos
+  built and booting stock firmware as far as a Canon assert (step 4, partial).
+- Waiting on Chris: Discord dev-portal setup + admin invite ask per the
+  `discord-bot/README.md`. Nothing else is blocked on the camera.
+- Work in flight: spikes 001-004 in `.planning/spikes/` (QEMU assert, stub
+  verification, cheap-wins scoping, ML boot in QEMU) plus Phase B's
+  `FEATURE_MATRIX.md`.
 
 Goal: get ML features working on the Canon EOS 6D Mark II (DIGIC 7), using QEMU
 emulation for the loop that doesn't need the camera, and the real body for the
@@ -87,8 +94,13 @@ SFDATA`. ROM0 + ROM1 are sufficient.
    deleting one file instead of a system rebuild + push. Verified in-shell:
    `arm-none-eabi-gcc` 15.2.1, `cc` 13.4.0, PIL 12.3.0, numpy 2.4.4,
    glib 2.88.1, pixman 0.46.4, gtk+3 3.24.52.
-2. Build ML for 6D2: `cd ml/platform/6D2.111` → `make`. Firmware version is
-   confirmed 1.1.1 from the ROM itself, so `6D2.111` is the correct platform dir.
+2. ~~Build ML for 6D2: `cd ml/platform/6D2.111` → `make`.~~ **DONE
+   (2026-08-15 12:11).** Firmware version is confirmed 1.1.1 from the ROM
+   itself, so `6D2.111` was the correct platform dir. Artifacts:
+   `build/autoexec.bin` (243 KB), unstripped ELF `build/autoexec`, symbol table
+   `build/6D2_111.sym` (1296 symbols), and a staged `build/zip/` containing
+   `autoexec.bin` + `ML-SETUP.FIR`. The ELF and `.sym` are what make source-level
+   gdb debugging possible in step 5.
 3. ~~Dump ROMs from the camera.~~ **DONE** — see section 1. Files live in
    `roms/6D2/`, which is where the tooling's default `--rom-dir` resolves to.
 4. **PARTIAL (2026-08-15).** qemu-eos builds and boots 6D2 stock firmware, but
