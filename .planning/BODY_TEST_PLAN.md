@@ -115,3 +115,30 @@ No battery pull expected. Bring back photos + all `.MLV` files.
   the read-only logger bot is built and waiting on the invite.
 - When the upstream PR branches are ready for review (`.planning/prs/`), read
   the PR bodies and decide which to push under your GitHub account.
+
+## Session 5 — bundled quick wins (each independent; do any subset)
+
+Card staging note (PC, before this session): after `tools/sync_card.sh`, ALSO
+delete `ML/modules/dual_iso.hid` from the card (the build zip ships it hidden;
+spike 007 says stills dual-ISO already works and the .hid is just the blanket
+new-port default). Everything self-records to RAWDIAG.LOG / files — photos
+only on a freeze.
+
+1. **Double-REC confirm (~30 s):** movie switch to movie icon, 1920 59.94p,
+   RAW video ON. START/STOP → let it auto-stop → immediately START/STOP again.
+   Expected: second take records normally (re-arm fix). Two MLVs on card.
+2. **Custom-WB discriminator (~1 min):** photo mode. Set WB to Custom after
+   registering a custom WB from any shot (Canon menu: white balance → Custom;
+   register via the [z2] Custom White Balance item). Then movie mode, record
+   2 s of raw. PC compares the file's WBAL gains to the known custom setting —
+   settles whether lens.c's PROP_CUSTOM_WB parse is right on D7.
+3. **Stills dual-ISO (~2 min):** photo mode. ML menu (Erase) → Modules tab →
+   confirm dual_iso is now visible → enable, restart camera when asked. ML
+   menu → Expo tab → Dual ISO → ON (e.g. 100/800). Take one photo of a
+   high-contrast scene (window + dark interior). Expected: photo shows the
+   interlaced stripe pattern in review. Turn Dual ISO OFF after. CR2 comes
+   back for cr2hdr processing.
+4. **Card speed benchmark (~3 min):** ML menu → Modules → bench already
+   loaded → Debug/Bench tab → Card benchmark → run. It writes results to the
+   card as an image/log. Settles the 60-90 MB/s assumption that all the
+   compression math rests on.
