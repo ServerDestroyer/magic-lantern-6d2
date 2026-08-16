@@ -1,0 +1,53 @@
+diff --git a/modules/raw_video/mlv_lite/mlv_lite.c b/modules/raw_video/mlv_lite/mlv_lite.c
+index d05b83ffc..c78718b9c 100644
+--- a/modules/raw_video/mlv_lite/mlv_lite.c
++++ b/modules/raw_video/mlv_lite/mlv_lite.c
+@@ -2056,6 +2056,8 @@ unsigned int raw_rec_polling_cbr(unsigned int unused)
+         /* raw video turned off? free any resources we might have got */
+         if (shoot_mem_suite || srm_mem_suite)
+         {
++            /* spike 006 step 4: which condition took raw video "inactive"? */
++            printf("raw inactive: lv=%d movie=%d gui=%d\n", lv, is_movie_mode(), gui_state);
+             gui_uilock(UILOCK_EVERYTHING);
+             take_semaphore(settings_sem, 0);
+             free_buffers();
+@@ -2065,6 +2067,14 @@ unsigned int raw_rec_polling_cbr(unsigned int unused)
+         return 0;
+     }
+ 
++#if 0 /* spike 006 re-arm fix — enable only after step 1 confirms the dead state */
++    /* both suites NULL while raw video active and idle -> realloc */
++    if (!shoot_mem_suite && !srm_mem_suite && raw_video_active && RAW_IS_IDLE)
++    {
++        realloc = 1;
++    }
++#endif
++
+     /* reallocate buffers if needed (only if not recording) */
+     if (realloc && (RAW_IS_IDLE || RAW_IS_PREPARING) && gui_state == GUISTATE_IDLE)
+     {
+@@ -3463,7 +3473,7 @@ void raw_video_rec_task(uint32_t card_index)
+             beep();
+         }
+ 
+-        int fps = fps_get_current_x1000();
++        fps = fps_get_current_x1000();   /* spike 006: was `int fps`, shadowing the outer fps (stuck at 1) */
+         if (fps == 0)
+             goto cleanup;
+ 
+diff --git a/src/exmem.c b/src/exmem.c
+index e3d3446c1..aeab234ad 100644
+--- a/src/exmem.c
++++ b/src/exmem.c
+@@ -218,7 +218,11 @@ size_t shoot_malloc_autodetect()
+     {
+         int tested_size = size_mb * 1024 * 1024;
+         //qprintf("[shoot_malloc] trying %s\n", format_memory_size(tested_size));
++        int t0 = get_ms_clock();
+         struct memSuite *testSuite = shoot_malloc_suite_int(tested_size);
++        int t1 = get_ms_clock();
++        /* spike 006 step 2: slow probe = allocator timeout truncating autodetect */
++        printf("[probe] %d MB: %s (%d ms)\n", tested_size >> 20, testSuite ? "ok" : "TIMEOUT", t1 - t0);
+         if (testSuite)
+         {
+             /* leave 1MB unallocated, just in case */

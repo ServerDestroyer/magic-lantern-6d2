@@ -188,3 +188,18 @@ qemu-eos. Verified: stock 6D2 firmware no longer hits the
 body log contains raw non-UTF-8 bytes — strip NULs and invalid sequences
 before feeding `extract_init_spells.py`. Candidate for upstreaming to
 qemu-eos together with 0003.
+
+## 0006 — raw-video diagnostics for spike 006 (Session 4 card build)
+
+Four edits from `spikes/006-rawvideo-memory/README.md` §NEXT TEST: (1)
+mlv_lite.c:3466 un-shadow `fps` — real upstream bug, outer `fps` stuck at 1
+feeding `overflow_time`; (2) `raw inactive: lv=%d movie=%d gui=%d` printf in
+the free branch; (3) `[probe] N MB: ok|TIMEOUT (T ms)` timing around each
+`shoot_malloc_autodetect` probe in exmem.c; (4) the suites-NULL re-arm fix,
+**`#if 0`'d** until step 1 confirms the dead state. Built 2026-08-15 evening
+(clean rebuild; note the module staleness trap below), diagnostic strings
+verified present in `build/zip` binaries: autoexec `c6fc4936…`, mlv_lite.mo
+`33a57525…`. **Build-system trap:** `make clean` in `platform/6D2.111` does
+NOT rebuild modules — `modules/build/*.mo` persist and get re-copied with
+fresh mtimes (stale content, fresh timestamp). Force with
+`rm modules/build/<mod>.mo modules/build/default_modules_complete`.
