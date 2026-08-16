@@ -1277,3 +1277,537 @@ translation-unit dump) live in
 `/tmp/claude-1000/-home-chris-Vibe-Coding-6D-Mark-II-Magic-Lantern-6D2/d1809f97-1ab5-4672-8a2b-1ab8dcfa3d5e/scratchpad/g2/`
 and can be deleted. No ROM was copied outside the project tree except transient slices in that
 scratch directory.
+
+---
+
+## Ghidra pass 3 — 2026-08-15
+
+**Status:** all four of pass 2's open questions answered. Read-only; nothing built, nothing
+committed, `ml/` and `qemu-eos/` untouched. One new measurement: the DryOS core RAM image at
+`0xDF000000` was dumped out of a running qemu-eos boot (see §7) — pass 2 could not answer question 4
+because **the code that answers it is not in ROM0 at all.**
+
+**Headline, and it is a correction:** `0xE04E3280` is **not** `StateTransition`. It is
+`PostStageEvent` — it allocates a 16-byte message and posts it to a task queue. The real
+`StateTransition` lives in the DryOS core at **`0xDF00A192`**, its object layout matches
+[/home/chris/Vibe Coding/6D Mark II Magic Lantern 6D2/ml/src/state-object.h](ml/src/state-object.h)
+almost exactly, and **ML's `STATE_FUNC` indexing is correct as written**. The event IDs 20–26 that
+pass 2 found are *stage event* IDs, not matrix rows; a resolver at `0xE03274F8` subtracts a base of
+20 before touching the matrix. Anyone who hooked `state_matrix[20]` on the strength of pass 2 would
+have written 640 bytes past the end of a 224-byte table.
+
+### 0. Method
+
+`arm-none-eabi-objdump` on ROM0 slices again, plus two new tools:
+
+1. A ROM-wide naive Thumb `BL`/`B.W`/`BLX(imm)` target index (62 349 distinct targets, 3.5 s in
+   Python). This is what turned "who calls this?" from guesswork into a lookup, and it is the single
+   most useful artefact of this pass.
+2. **A live memory dump from qemu-eos.** `0xDF000000` is `ram_extra_addr[0]` for DIGIC 7
+   (`qemu-eos/hw/eos/model_list.c:587`) — RAM that the bootloader populates, so the DryOS core is
+   *not* statically present in ROM0 (a whole-ROM scan for the word `0xDF000000` returns zero hits).
+   Booting stock firmware and issuing `pmemsave 0xDF000000 0x40000 <file>` over the QEMU monitor
+   produced it in 75 s. Ghidra was not used at all this pass either.
+
+> **Gotcha worth recording:** QEMU's HMP expression parser consumes the leading `/` of an absolute
+> path as a division operator (`monitor/hmp.c:405`, `expr_prod`), so `pmemsave … /tmp/x.bin` dies
+> with `invalid char 't' in expression`. Pass a **relative** filename and set qemu's cwd instead.
+
+### 1. `0xE04E3280` is `PostStageEvent`, and the whole "state machine" is a task queue
+
+```
+e04e3280  ldr  r1, =0xE0932A74 ; ldr r1,[r1]   ; r1 = &"StageClass"   (0xE0F8C33C)
+e04e328a  ldr  r0, [r0, #0]                    ; obj->type
+e04e3296  cmp  r0, r1  /  bne -> return 7      ; *** rejects anything that is not a Stage ***
+e04e32a0  movs r0, #16 ; blx malloc            ; 16-byte message
+          msg[0] = ctx  (r1) ; msg[4] = eventId (r2)
+          msg[8] = job  (r3) ; msg[12] = arg5  ([sp])
+e04e32b6  ldr  r0, [r5, #16]  ; blx 0xE043B3E0 ; msg_queue_post(stage->msgq, msg)
+```
+
+Neighbours confirm the naming: `0xE04E31EE` is the same function with error logging
+(`"[STAGE ERROR] PostStageEvent : Name = %s, err = %#x"` @`0xE04E33A8`) and a 6th argument;
+`0xE04E32CA` is the receive half (`"[STAGE ERROR] TryPendStageEvent…"` @`0xE04E33DC`).
+`0xE04E3280` has **242 `BL` callers ROM-wide** — it is a generic DryOS-level API, not
+lossless-specific.
+
+`CreateStage` is at **`0xE04E3178`**, `(name, prio, stackSize, msgqDepth, arg5, eventHandler)`:
+
+```c
+struct Stage {                 /* 0x1C bytes, malloc'd at 0xE04E318A */
+    const char *type;          /* +0x00  == &"StageClass"                       */
+    const char *name;          /* +0x04                                          */
+    uint32_t    running;       /* +0x08  set to 1; the task loop exits when 0     */
+    uint32_t    task;          /* +0x0C  create_task(name, prio, stack, 0xE04E313F, this) */
+    uint32_t    msgq;          /* +0x10  CreateMessageQueue(name, depth)          */
+    void       *jobList;       /* +0x14                                           */
+    void      (*handler)(void *ctx, uint32_t ev, void *job, void *t);  /* +0x18   */
+};
+```
+
+The task loop is **`0xE04E313E`**: pend a message, unpack it to four locals, then
+
+```
+e04e3162  ldr  r7, [r4, #24]                 ; stage->handler
+e04e3164  ldrd r1, r0, [sp, #16]             ; r0 = ctx,  r1 = eventId
+e04e3168  ldrd r3, r2, [sp, #8]              ; r2 = job,  r3 = arg5
+e04e316c  blx  r7                            ; handler(ctx, eventId, job, arg5)
+```
+
+So a "post" is genuinely asynchronous: `PostStageEvent` returns immediately and the handler runs on
+the stage's own task.
+
+### 2. The real `StateTransition` — `0xDF00A192` (DryOS core, RAM)
+
+`CreateStateObject` is at **`0xDF00A1FA`**, `(name, autoSeq, matrix, maxInputs, maxStates)`:
+
+```c
+obj = malloc(0x20);
+obj[0x00] = *0xDF00EE8C;   /* -> 0xDF00F4C8 = "StateObject" */
+obj[0x04] = name;          obj[0x08] = autoSeq;
+obj[0x0C] = *0xDF00A2C0;   /* = 0xDF00A193  -> StateTransition, thumb */
+obj[0x10] = matrix;        obj[0x14] = maxInputs;
+obj[0x18] = maxStates;     obj[0x1C] = 0;      /* current_state */
+```
+
+That is **byte-for-byte `struct state_object`** from
+[/home/chris/Vibe Coding/6D Mark II Magic Lantern 6D2/ml/src/state-object.h](ml/src/state-object.h) `:47-68`,
+including the header's guessed `+0x0C` function pointer. And `StateTransition` at `0xDF00A192`:
+
+```c
+int StateTransition(state_object *obj, void *x, uint32_t input, void *z, void *t)
+{
+    if (obj->type != &"StateObject")     return 7;
+    if (obj->max_inputs < input)         return 3;          /* INCLUSIVE bound  */
+    cell = obj->state_matrix + 8 * (obj->max_states * input + obj->current_state);
+    if (cell->handler == NULL)           return 0;          /* no-op cell       */
+    obj->current_state = cell->next_state;                  /* *** BEFORE ***   */
+    r = cell->handler(x, z, t);                             /* THREE args       */
+    if (r) return r;
+    if (obj->auto_sequence)                                 /* chained object   */
+        return 0xDF00A178(obj->auto_sequence, x, input, z, t);
+    return 0;
+}
+```
+
+Four things ML must absorb from this:
+
+| Finding | Consequence for ML |
+|---|---|
+| `cell = matrix + 8*(max_states*input + state)` | **`STATE_FUNC(o,i,s)` in `state-object.h:71` is correct.** No change needed. |
+| `current_state` is written **before** the handler is invoked | a `stateobj_install_hook` that reads `current_state` inside the hook sees the *new* state, not the old one. Every existing ML hook that logs "state N → M" on a D4/D5 body has the same behaviour, so this is consistency, not a surprise — but it is now measured, not assumed. |
+| the handler takes **3** args `(x, z, t)` | `state_transition_function_t` in `state-object.h:33-38` declares 4. Harmless on ARM (the 4th register is ignored) but the typedef is wrong. |
+| `auto_sequence` (`+0x08`) is a **`state_object *`**, not a `uint32_t` | if it is non-NULL the same input is re-dispatched to a chained object. All three SsDevelop objects pass 0, so nothing chains here, but ML must never write a non-pointer there. |
+
+### 3. Where the input-ID arithmetic actually lives — `0xE03274F8`
+
+The SsDevelop stage's handler is **`sssEventDispatch` at `0xE026B90C`** (`./SsDevelop/SsDevelop.c`,
+trace `"[SSS] sssEventDispatch Current=%d,dwEventID=%d,dwParam=%#x"` @`0xE026BB14`). It does exactly
+two things:
+
+```
+e026b922  bl 0xE03274F8      ; obj = ResolveStateObject(ctx, job, globalEventId, &localInput)
+e026b928  str r0, [r1, #12]  ; ctx->curStateObj = obj
+e026b93e  blx 0xE043B420     ; StateTransition(obj, ctx, localInput, job, arg5)
+```
+
+and the resolver at **`0xE03274F8`** is the missing arithmetic, verbatim:
+
+```
+e03274fc  cmp  r2, #8   ; bcc -> r5 = *(uint32_t**)0x5738     ; local = input
+e032750e  cmp  r4, #13  ; bcc -> r5 = devcGetJobParam(job)[0] ; local = input - 8
+e032751c  cmp  r4, #20  ; bcc -> r5 = devcGetJobParam(job)[1] ; local = input - 13
+e032752a  cmp  r4, #27  ; bcc -> r5 = devcGetJobParam(job)[2] ; local = input - 20
+                        ; else ASSERT(SsDevelopState.c:488)
+```
+
+> **The `CreateStateObject` 4th argument (13 / 20 / 27) is `max_inputs` *and* the exclusive upper
+> bound of that object's global event range — the same number doing two jobs.** `StateTransition`
+> checks it against the *local* input (always ≤ 6), so the check is vacuous; `0xE03274F8` uses it as
+> the range boundary. Pass 2 saw half of this and concluded ML's model was wrong; the model is
+> right, the *number* is just larger than the matrix.
+
+Re-dumping all four matrices with the correct `local = global - base` gives a table that is
+**identical in content to pass 2's**, so pass 2's handler/state map stands:
+
+```
+M0 0xE090EA58  8x3  events  0.. 7   base 0   SsDevelopPath level  (object: *(void**)0x5738)
+M1 0xE090EB18  5x2  events  8..12   base 8   job level            (object: devcGetJobParam(job)[+0])
+M2 0xE090EB68  7x5  events 13..19   base 13  YUV path             (object: devcGetJobParam(job)[+4])
+M3 0xE090EC80  7x4  events 20..26   base 20  LOSSLESS path        (object: devcGetJobParam(job)[+8])
+```
+
+```
+M3 (lossless), rows are LOCAL 0..6:
+  local 0 (ev 20) ReqLosslessStart              s0->0 @E0329268
+  local 1 (ev 21) sssRequestAllocLosslessMemory s0->1 @E03294DE
+  local 2 (ev 22) JudgeAllocLosslessMemory      s1->1 @E03295A2
+  local 3 (ev 23) LockEnginResLosslessPath      s1->2 @E0329660 | s2->2 @E032A0B8 ("Ignore")
+  local 4 (ev 24) StartLosslessPath             s2->3 @E0329B78
+  local 5 (ev 25) CompLosslessPath              s3->0 @E0329C98
+  local 6 (ev 26) RetryAllocLosslessMemory      s0->2 @E0329FD6
+```
+
+**Pass 2's item 7 is closed as a side effect.** Input 26 looked anomalous ("`next_state = 2` from
+state 0") because pass 2 assumed CompLosslessPath posts it from state 3. It does not: because
+`StateTransition` writes `current_state = 0` *before* running the input-25 handler, by the time
+`CompLosslessPath` posts event 26 at `0xE0329D0C` the object is already in state 0. Row 6 / state 0
+is the correct and only reachable cell.
+
+**Verified sanity check on the arithmetic** (`StartJob`, global 9): base 8 → local 1, `max_states`
+2, state 0 → `0xE090EB18 + 8*(2*1+0) + 4 = 0xE090EB2C`, and `0xE0327E89` occurs exactly once in the
+whole 32 MiB ROM — at `0xE090EB2C`. Same check passes for all eight lossless handler cells.
+
+### 4. Question 1 — where `(ctx, job)` comes from
+
+#### 4.1 `ctx` is a singleton and it is trivial to get
+
+`ctx` is **not** the 68-byte `SsDevelopState` instance that pass 2 assumed; that assumption is what
+made `ctx[+8]` look like a state object. `ctx` is created once by `0xE026B970`
+(`./SsDevelop/SsDevelop.c`) and cached in a single RAM word:
+
+```c
+struct SsDevelopPathCtx {          /* 0x2C bytes, malloc'd at 0xE026B982 */
+    const char *type;              /* +0x00                                         */
+    /* +0x04 */
+    struct Stage *stage;           /* +0x08  CreateStage(...) result                */
+    state_object *curStateObj;     /* +0x0C  scratch, written by sssEventDispatch   */
+    uint32_t      arg;             /* +0x14  debug class id  (every `ldrb [ctx,#20]`)*/
+    /* +0x18 +0x1C +0x20 ... */
+};
+```
+
+> **`ctx = *(struct SsDevelopPathCtx **)0x46C8`** (literal at `0xE026BB10`; every wrapper in
+> `SsDevelop.c` reads it and ASSERTs on NULL). **`stage = ctx[+0x08]`.**
+
+It is also recoverable from any live job: `ctx = 0xE036B1B4(job)`, used by
+`CompLosslessPathResLockCB` (`0xE032960C`) and `CompLosslessPathCB` (`0xE03296FA`).
+
+#### 4.2 The job is a `JobClass` object and ML cannot cheaply make one
+
+`job` is a DryOS class-checked object; `0xE04EEA60` and `0xE04EE98A` both compare `job[0]` against
+`*0xE0837350` → `0xE0F812EC` = **`"JobClass"`**.
+
+| Accessor | What it returns |
+|---|---|
+| `0xE04EE98A(job)` | `GetJobID` — the `%d` in every LosslessPath trace |
+| `0xE04EEA60(job)` | `GetUnitPictType` = **the quality code**, physically `job[+4][+0x250]` |
+| `0xE04F3B74(job)` | a large shooting-parameter block (`[+0x660]` DcsPict, `[+0xD20]` mode) |
+| `0xE036B164(job)` | `devcGetJobParam` — the per-job SsDevelop record |
+
+`devcGetJobParam` (`0xE036B164`, `./DevCommon/DevelopComponent.c`) is the hub. It fetches a table
+from the `"DEVELOP_COMPONENT"` registry object (`0xE036B050` → `0xE04DD832("DEVELOP_COMPONENT",
+&out)`, table `= out[+0x0C]`) and picks one of **exactly two** records, stride `0xE8`, keyed by
+`record[+0x00] == job`:
+
+```c
+struct DevelopJobParam {           /* 0xE8 bytes, exactly 2 exist */
+    void         *job;             /* +0x00  key                                            */
+    SsDevelopState *inst;          /* +0x04  the 68-byte instance   (getter 0xE036B19E)      */
+    SsDevelopPathCtx *ctx;         /* +0x08  (getter 0xE036B1B4, setter 0xE036B1A8)          */
+    /* ... */
+    void         *outMemSuite;     /* +0xB4  compressed output      (getter 0xE036B55A)      */
+};
+```
+
+and the 68-byte instance (2 of them, pooled in the `"SSSStateList"` message queue at RAM
+`0x5738+0x34`, array at `0x5738+0x4C`) is the thing that carries the three state objects at
+`+0x00/+0x04/+0x08` and the two `EngResLockReq` at `+0x1C`/`+0x30` that pass 2 dumped.
+
+The binding order, measured:
+
+| Step | Site | Effect |
+|---|---|---|
+| pop an instance from the pool | `0xE0327964` `msg_queue_receive(globals[0x34], &inst)` | 2 concurrent jobs max |
+| bind instance to job | `0xE0327A54` `0xE036B192(job, inst)` | `param->inst = inst` |
+| post event 8 | `0xE0327A62` | job level state machine starts |
+| bind ctx to job | `0xE0327ECC` `0xE036B1A8(job, ctx)` inside `StartJob` | `param->ctx = ctx` |
+| decide lossless | `0xE0327F5C` `if (0xE02E839A(job) == 1)` | **the one switch** |
+| post event 20 | `0xE0327FB8` | `ReqLosslessStart` |
+| return instance to pool | `0xE0327DFE` `msg_queue_post(globals[0x34], inst)` | job over |
+
+> **`0xE02E839A(job)` is the predicate "this job wants a lossless encode."** When it returns 0,
+> `StartJob` logs `"LosslessPath Skip(%d)"` (`0xE0328254`) and the lossless machine is never
+> entered. `0xE02E8330(job)` is the sibling for the YUV path (event 13).
+
+**Verdict on question 1: ML cannot synthesise a job in phase 1.** A job is a `JobClass` instance
+created by the job-manager TU around `0xE04EExxx` (`CreateSkeltonJob`, `DeleteJob`,
+`ChangePictType`), it must be registered in the `DEVELOP_COMPONENT` two-slot table, it must carry a
+`0xE04F3B74` parameter block whose `[+0xD20]` mode word is not one of the four excluded values, and
+`0xE04EEA60(job)` must land on `0x1000`/`0x10000`. Every one of those is a dependency chain ML has
+not traced. **The realistic route is to borrow a live job, not to build one.** See §6.
+
+### 5. Question 2 — the compressed size
+
+`CompLosslessPath` (`0xE0329C98`) decompiled. **The size never lands in a struct the caller polls:
+it is the fifth word of the stage event, i.e. the `t` argument.** The chain:
+
+```
+JPCORE done -> ShtSsDevelopPath RcvMsgMem1ToRawCompCBR (0xE051B60C)
+             -> tail-calls the CBR stored by SetMem1ToRaw = *0xE032A4F0 = 0xE03296EB
+             -> CompLosslessPathCB (0xE03296EA), r1 = engine completion record `rec`
+                  job  = rec[+0x0C]
+                  ctx  = 0xE036B1B4(job)
+                  DebugMsg "CompLosslessPathCB(%d)(%#x)(%d)"  (id, rec[+8], rec[+0])
+                  PostStageEvent(ctx->stage, ctx, 25, job, t = rec[+0x00])   @0xE0329736
+             -> CompLosslessPath(ctx, job, size)                             @0xE0329C98
+```
+
+and inside `CompLosslessPath` the third argument is used as a byte count:
+
+```
+e0329cda  bl 0xE036B55A(job)     ; param->outMemSuite   (+0xB4)
+e0329ce0  bl 0xE04E408A          ; GetSizeOfMemorySuite (class-checked)
+e0329ce4  cmp r0, r6             ; capacity  vs  size
+e0329ce8  bcs -> success
+          ; --- overflow ---
+          DebugMsg "Lossless Retry(%d):%#x %#x"   (id, size, capacity)   @0xE0329F40
+e0329d0c  movs r2, #26 ; PostStageEvent(..., 26, job, size)   -> RetryAllocLosslessMemory
+          ; --- success ---
+e0329d50  bl 0xE032A346(ctx, job, size)
+             -> 0xE04F961A(outMemSuite, size, 0xE0329C5D, ctx)   ; hand (buffer, byte count) on
+```
+
+> **For `mlv_lite`: the compressed byte count is `r2` of the input-25 handler, equivalently
+> `[rec + 0x00]` at `CompLosslessPathCB`. A hook on matrix cell `M3[local 5][state 3]`
+> (`0xE090ED3C`) captures it with zero extra machinery.**
+
+This is also the D7 answer to "what if the output buffer is too small": Canon does not truncate, it
+re-allocates and re-runs (event 26 → `RetryAllocLosslessMemory` → state 2 → `StartLosslessPath`
+again). `mlv_lite` gets the same safety for free, at the cost of a variable-latency frame.
+
+### 6. Question 3 — abort
+
+**Two-level answer: pass 2 was right about the state machine and wrong to stop there.**
+
+**(a) The state machine has no abort.** In `M3`, state 3 ("JPCORE encoding in flight") has exactly
+one non-NULL cell — local 5 / event 25. Local inputs 0,1,2,3,4,6 in state 3 are all `{3, NULL}`, so
+posting any of them while an encode is running is silently discarded and the object stays in state
+3. There is no `TTL_Stop` cell, confirmed by exhaustive dump.
+
+**(b) The engine layer does have a stop.** `./Shoot/ShtPath/ShtSsDevelopPath/ShtSsDevelopPath.c`
+exposes the usual triple, and pass 2 missed the third because it never read the strings:
+
+| Function | Event | String | Callers ROM-wide |
+|---|---|---|---|
+| `0xE051B560` | 6 | `SetMem1ToRaw` @`0xE051B7CC` | 1 — `0xE032A2BA` (inside `StartLosslessPath`) |
+| `0xE051B582` | 7 | `StartMem1ToRaw` @`0xE051B7DC` | 1 — `0xE032A2D6` |
+| **`0xE051B59C`** | **8** | **`StopMem1ToRaw`** @`0xE051B7EC` | **1 — `0xE0329CD6`, inside `CompLosslessPath`** |
+
+with a completion handler `RcvMsgStopMem1ToRawCompCBR` at `0xE051B630`
+(strings `0xE051B83C`/`0xE051B858`). Canon calls `StopMem1ToRaw()` — no arguments — as the *second*
+statement of every normal completion, i.e. it is a per-frame teardown, never a cancel.
+
+Two properties make it unsafe as a mid-flight abort:
+
+```
+e051b5ae  bl  0xE042A6D4(task, 8, 0)       ; async: posts, does not wait
+e051b5b6  ldr r0, [r4, #24] ; blx 0xE043B4E8(r0, 0)
+e051b5be  movs r0,#0 ; str r0, [r4, #4]    ; *** clears the stored completion CBR ***
+```
+
+Clearing `globals[+4]` means `RcvMsgMem1ToRawCompCBR` (`0xE051B60C`) will find a NULL CBR and
+return without calling `CompLosslessPathCB` — so if the JPCORE *does* finish after a mid-flight
+Stop, **event 25 is never posted and the state object is stranded in state 3 forever**, with the
+engine resources still locked and the `DevelopJobParam` slot still occupied. And
+`RcvMsgStopMem1ToRawCompCBR` ASSERTs at `ShtSsDevelopPath.c:294` if `globals[+0x18]` has bit 0 set.
+
+> **Answer: there is no safe way to cancel an encode in flight.** The correct stop discipline for
+> `mlv_lite` is *stop issuing, then drain*: stop posting event 20 and wait for the outstanding
+> input-25 events. The drain is bounded — the `DEVELOP_COMPONENT` table has exactly two records
+> (`0xE036B164` adds `0xE8` at most once) and the `SSSStateList` pool is created with depth 2
+> (`0xE0327220`, `CreateMessageQueue("SSSStateList", 2)`; the init loop runs `r4 = 0..1`), so **at
+> most two encodes can ever be outstanding.** Worst-case drain is two frames.
+
+For completeness: the unlock does happen on both quality branches — RAW takes
+`0xE0329F5C: r0 = inst + 0x1C` and MRAW/SRAW takes `0xE0329D2A: r0 = inst + 0x30`, both falling into
+`0xE0329C74 sssUnLockEngineResourcesLossless` → `0xE051B5D0` (event 12). After that
+`CompLosslessPath` posts either event 21 (another lossless allocation — the next frame of a burst)
+or event 11 (job complete), chosen by `0xE036B574(job) == 2` at `0xE0329F7A`.
+
+### 7. Sketch — one encode from the ML side
+
+The shape has changed from pass 2: it is still a one-shot post, but the post is a **stage event**,
+not a state transition, and the hard part is now the job.
+
+```c
+/* 6D2 1.1.1 — sketch, NOT verified on hardware or in emulation */
+
+/* --- ROM/RAM constants established by passes 1-3 --- */
+#define SSDEV_CTX_PTR      0x46C8       /* RAM: SsDevelopPathCtx **  (SsDevelop.c singleton)  */
+#define PostStageEvent     0xE04E3280   /* (stage, ctx, eventId, job, arg5) -> err            */
+#define devcGetJobParam    0xE036B164   /* (job) -> DevelopJobParam*                          */
+#define GetUnitPictType    0xE04EEA60   /* (job) -> quality code                              */
+#define GetJobID           0xE04EE98A
+#define SS_EV_REQ_LOSSLESS 20           /* global stage event id                              */
+#define SS_EV_COMP_LOSSLESS 25
+#define M3_LOCAL_COMP      5            /* matrix row for event 25  (= 25 - 20)               */
+
+struct SsDevCtx { void *type; uint32_t u04; void *stage; void *curObj;
+                  uint32_t u10; uint32_t dbgClass; };
+struct DevJobParam { void *job; void *inst; struct SsDevCtx *ctx; /*...*/
+                     char pad[0xA8]; void *outMemSuite; };   /* outMemSuite at +0xB4 */
+
+/* 0. geometry gate (pass 1 §4) — hard ASSERT in the ROM if violated */
+if (res_x % 16 || res_y % 8) return -1;
+
+/* 1. the context is a singleton; no allocation, no hunting */
+struct SsDevCtx *ctx = *(struct SsDevCtx **)SSDEV_CTX_PTR;
+void *stage = ctx->stage;
+
+/* 2. THE job.  ML does not own one.  Obtain it by hooking Canon's own StartJob:
+ *      obj  = devcGetJobParam(job)->inst[+0x04]      (M2 object, events 13..19)
+ *    ...but the cheapest place to *observe* is M1 local 1 (= event 9, StartJob,
+ *    handler 0xE0327E88, cell 0xE090EB2C): stash (ctx, job) there.
+ *    Quality must already be 0x1000 or 0x10000 for LosslessEncMode 0 (RAW). */
+if (GetUnitPictType(job) != 0x1000 && GetUnitPictType(job) != 0x10000) return -1;
+
+/* 3. install the size hook BEFORE firing: M3 cell for local input 5, state 3.
+ *    struct state_object *m3 = devcGetJobParam(job)->inst[+0x08];
+ *    STATE_FUNC(m3, M3_LOCAL_COMP, 3)  ==  m3->state_matrix[3 + 5*4].handler
+ *                                      ==  *(void**)0xE090ED3C
+ *    hook(ctx, job, size) { g_compressed_size = (uint32_t)size; orig(ctx, job, size); }
+ *    NOTE: local index 5, NOT 25.  m3->max_inputs is 27 but the table has 7 rows. */
+
+/* 4. fire.  Asynchronous: this only enqueues onto the SsDevelop stage task. */
+PostStageEvent(stage, ctx, SS_EV_REQ_LOSSLESS, job, 0);
+
+/*    ev20 ReqLosslessStart 0xE0329268          -> posts 21
+ *    ev21 sssRequestAllocLosslessMemory        -> async memSuite alloc
+ *           `-> CompAllocMemSuiteForLossless 0xE032949E posts 22
+ *    ev22 JudgeAllocLosslessMemory             -> posts 23
+ *    ev23 LockEnginResLosslessPath 0xE0329660  -> 0xE0329636 -> 0xE051B5C2 (event 11)
+ *           the ShtSsDevelopPath task locks the 16 IDs at 0xE09425A0 (RAW)
+ *           `-> trampoline 0xE0328498 -> CompLosslessPathResLockCB posts 24
+ *    ev24 StartLosslessPath 0xE0329B78 -> 0xE032A27C
+ *           0xE032A2B2  0xE032973C(ctx, inst[+0x18], job)   fills Rsc + Param
+ *           0xE032A2BA  0xE051B560(argsPair, 0xE03296EB)    SetMem1ToRaw + CBR
+ *           0xE032A2D6  0xE051B582()                        StartMem1ToRaw
+ *         `-> JpCoreIntrHandler 0xE0246F2C -> RcvMsgMem1ToRawCompCBR 0xE051B60C
+ *             -> CompLosslessPathCB 0xE03296EA posts 25 with t = rec[+0] = SIZE
+ *    ev25 CompLosslessPath 0xE0329C98
+ *           0xE0329CD6 StopMem1ToRaw()          (teardown, always)
+ *           size > capacity ? post 26 (realloc + retry) : 0xE032A346(ctx, job, size)
+ *           unlock: inst+0x1C (RAW) -> 0xE0329C74 -> 0xE051B5D0 (event 12)
+ *           then posts 21 (next frame) or 11 (job done)
+ */
+
+/* 5. wait for the hook.  No cancel exists (§6); to stop, stop posting and drain
+ *    at most two outstanding encodes. */
+```
+
+Updated mapping onto the seven D5 pointers in
+[/home/chris/Vibe Coding/6D Mark II Magic Lantern 6D2/ml/modules/silent/lossless.c](ml/modules/silent/lossless.c) `:69-75`:
+
+| D5 pointer | D7 equivalent | Callable directly? |
+|---|---|---|
+| `TTL_SetArgs` | `0xE032973C` | no — driven from `0xE032A27C` |
+| `TTL_Prepare` | event **23** | no — `PostStageEvent` |
+| `TTL_RegisterCBR` | `*0xE032A4F0 = 0xE03296EB` | not a call; patch the pointer or hook the matrix |
+| `TTL_SetFlags` | — | gone; folded into `GetUnitPictType(job)` |
+| `TTL_Start` | event **24**, and underneath `0xE051B560` + `0xE051B582` | the two `ShtSsDevelopPath` calls *are* directly callable, `(argsPair, cbr)` and `()` |
+| `TTL_Stop` | **`0xE051B59C StopMem1ToRaw()`** | callable — but unsafe mid-flight (§6b) |
+| `TTL_Finish` | event **25** → `0xE0329C98` | no — posted by the JPCORE completion |
+| `CreateResLockEntry` + array | not used; `0xE09425A0` is Canon's, in the instance | n/a |
+
+### 8. What still blocks a first experiment — honestly
+
+1. **The job. Still the blocker, now with a shape.** It is a `JobClass` object registered in a
+   two-slot `DEVELOP_COMPONENT` table with a `0xE04F3B74` parameter block. ML must borrow one.
+   The cheapest borrow is a **passive hook on `StartJob`** (`M1` local 1, cell `0xE090EB2C`) during
+   a normal Canon still capture, which yields `(ctx, job)` and a live memSuite for free. That is a
+   read-only experiment and it is the correct first move. Actively minting a job is unscoped work.
+2. **`0xE02E839A(job)`** — the "wants lossless" predicate — was located but not decompiled. If it
+   is a simple read of a shooting-menu setting, ML can flip it and let Canon drive the whole encode,
+   which would make phase 2 nearly free. **This is now the highest-value 30-minute follow-up.**
+   The same applies to `0xE032A202` (pass 2's item 6), still only skimmed.
+3. **`0xE051B560`/`0xE051B582` are directly callable** and take `(argsPair, cbr)` / `()`. That is a
+   genuinely lower-level entry than the state machine — it bypasses the resource lock and the
+   allocator. Whether it works without the lock is untested and is the second experiment.
+4. **`0xE032A27C` still not traced into JPCORE registers.** The `0xD0100000` window and the
+   `0xD0003000` SharememTbl writes are known to exist; the write sequence behind event 6/7 in the
+   `ShtSSDevelopPath` task was not followed. Unchanged from pass 2 item 5.
+5. **qemu-eos still does not map JPCORE** (`0xD0100000..0xD0101FFF`). Pass 1's one-line
+   `eos_handle_jpcore` window is still the cheapest way to get any of this observed rather than
+   reasoned. Nothing in passes 1–3 has been executed.
+6. **Nothing here is validated against hardware.** §2 and the `0xDF000000` addresses are measured
+   from a live emulator boot; everything else is static.
+
+**Estimate:** phase 1 is now complete for the purposes of writing code — every address ML needs is
+named. The remaining unknown (a job) is a *phase 2* problem, not a phase 1 one, because the answer
+is "hook Canon's" and that is exactly what phase 2 (stills, `silent.mo`) does anyway.
+**Phase 1: done.** Phase 2: 2–3 sessions, unchanged, with item 2 above as the first task.
+Phase 3: unchanged. **Total 4–8**, down from 6–11.
+
+### 9. Reproduction
+
+```bash
+cd "/home/chris/Vibe Coding/6D Mark II Magic Lantern 6D2"
+export PATH="$(nix build --no-link --print-out-paths 'nixpkgs#gcc-arm-embedded')/bin:$PATH"
+
+# --- static: ROM0 slices (file offset = addr - 0xE0000000) ---
+slice() { python3 -c "
+import sys; a=int(sys.argv[1],16); n=int(sys.argv[2],0)
+open('/tmp/s.bin','wb').write(open('roms/6D2/ROM0.BIN','rb').read()[a-0xE0000000:a-0xE0000000+n])" "$1" "$2"
+  arm-none-eabi-objdump -D -b binary -m arm -M force-thumb --adjust-vma="$1" /tmp/s.bin; }
+
+slice 0xE04E3280 0x50    # PostStageEvent: StageClass check + malloc(16) + msg_queue_post
+slice 0xE04E313E 0x3C    # Stage task loop -> handler(ctx, ev, job, arg5)
+slice 0xE026B90C 0x40    # sssEventDispatch
+slice 0xE03274F8 0x50    # the input-ID resolver: <8 / <13 / <20 / <27, bases 0/8/13/20
+slice 0xE0327E88 0x134   # StartJob: 0xE02E839A(job) gate, posts 12/13/20
+slice 0xE0329C98 0xC0    # CompLosslessPath: size vs GetSizeOfMemorySuite, retry via ev26
+slice 0xE03296EA 0x50    # CompLosslessPathCB: size = rec[+0], posts ev25
+slice 0xE051B54C 0x60    # Set/Start/StopMem1ToRaw (events 6/7/8)
+
+# --- the four matrices, with the CORRECT local indexing ---
+python3 -c "
+import struct; r=open('roms/6D2/ROM0.BIN','rb').read(); B=0xE0000000
+for base,ni,ns,g0 in ((0xE090EA58,8,3,0),(0xE090EB18,5,2,8),(0xE090EB68,7,5,13),(0xE090EC80,7,4,20)):
+  print(hex(base))
+  for i in range(ni):
+    print(' ev%2d local%d:'%(g0+i,i), ' '.join('{%d,%08X}'%struct.unpack_from('<2I',r,base+8*(ns*i+s)-B) for s in range(ns)))"
+
+# --- dynamic: the DryOS core is RAM, not ROM.  Dump it from a live boot. ---
+#  1. copy verify_spells.py, set monitor_socket_path to a SHORT path (AF_UNIX 108-char limit)
+#  2. os.chdir() to the output dir before entering QemuRunner: qemu inherits cwd
+#  3. pmemsave with a RELATIVE filename -- QEMU's HMP parser eats a leading '/' as division
+#       pmemsave 0xDF000000 0x40000 dryos_df00.bin
+arm-none-eabi-objdump -D -b binary -m arm -M force-thumb \
+    --adjust-vma=0xDF00A146 <(dd if=dryos_df00.bin bs=1 skip=$((0xA146)) count=0xB6 2>/dev/null)
+    # 0xDF00A192 StateTransition, 0xDF00A1FA CreateStateObject
+```
+
+**Scratch artefacts (contain Canon firmware — delete when done):**
+`/tmp/claude-1000/-home-chris-Vibe-Coding-6D-Mark-II-Magic-Lantern-6D2/d1809f97-1ab5-4672-8a2b-1ab8dcfa3d5e/scratchpad/g3/`
+holds `dryos_df00.bin` (256 KiB of DryOS core RAM dumped from the emulator), `ram_low.bin` (64 KiB
+of low RAM), transient ROM slices `s.bin`/`d.bin`, the BL/B.W index `xref.pkl`, the boot logs, and
+copies of `sd.qcow2`/`cf.qcow2`. No ROM was copied outside the project tree except those slices and
+the RAM dumps in that directory. A throwaway monitor socket `/tmp/c1000-g3.monitor` was created and
+removed by QemuRunner. `ml/` and `qemu-eos/` were not modified and qemu was not rebuilt.
+
+
+---
+
+## ADVERSARIAL VERIFICATION — pass-3 headline SURVIVES, struct model corrected
+
+An independent agent re-derived these claims from primary sources (HOLDS: True).
+Act on the corrected version below, not on the text above where they conflict.
+
+Four things to fix or flag in the write-up. None overturns a conclusion; one is a real trap.
+
+1. NEW AND LOAD-BEARING — the write-up's own struct model is wrong about max_inputs. Canon passes the CUMULATIVE global event upper bound as the 4th CreateStateObject argument, not the row count: 8 (0xE03274C8), 13, 20, 27 (0xE032724A / 0xE0327260 / 0xE0327276). The real row counts, proven by the four matrices tiling 0xE090EA58..0xE090ED60 contiguously, are 8 / 5 / 7 / 7. So for the lossless object obj->max_inputs (+0x14) is 27 while its matrix has only 7 rows. obj->max_states (+0x18) = 4 is the true stride and is what STATE_FUNC uses, so hooking a single cell is safe — but any ML code that enumerates or bounds-checks the matrix from max_inputs will run 20 rows (160 bytes) past the end of a 224-byte table. The write-up's claim 2 asserts "[0x14]=maxInputs" without noticing the value is 27.
+
+2. UNVERIFIABLE from ROM0 (flag, do not accept as measured): the specific RAM addresses 0xDF00A192 (StateTransition) and 0xDF00A1FA (CreateStateObject), and the 32-byte struct layout read there. What ROM0 does prove is only that the dispatch veneer at 0xE043B420 targets 0xDF00A179 (Thumb -> 0xDF00A178) and that sssEventDispatch calls it. 0xDF00A192 itself I could not check. The write-up sources these from one pmemsave of one boot and no second observer; treat the exact offsets as single-source.
+Related: "Whole-ROM scan for the word 0xDF000000 returns 0 hits" — I reproduce 0 hits, but this is not evidence of anything. No code would reference a region base as a bare literal. Delete it as evidence.
+
+3. CLAIM 4 / CLAIM 13 — right answer, wrong (and unverified) reason. "StateTransition writes current_state BEFORE invoking the handler" is a RAM-only assertion I cannot check. It is also unnecessary: 0xE04E3280 is an asynchronous queue post to the same stage->msgq that the running handler was dequeued from, so the stage task cannot dispatch event 26 until CompLosslessPath has returned and StateTransition has finished — under EITHER write ordering the object is in state 0 when event 26 is dispatched. Keep the conclusion, drop the mechanism, or mark it unverified.
+The "three args" half of claim 4 IS statically corroborated: sssEventDispatch passes five values (obj, ctx, local input, job, arg5) at 0xE026B93E, and all three matrix handlers I disassembled (0xE0329268, 0xE0329C98, 0xE0329FD6) use exactly r0=ctx, r1=job, r2=arg5 and treat r3 as scratch. The "+0x08 auto_sequence forwarded when the handler returns 0" half remains unverified. Note also that sssEventDispatch's own reading of a 0 return is "unhandled": cbz r4 -> DebugMsg level 6 with "[SSS] sssEventDispatch Current=%d,...".
+
+4. Claim 1's name is the sibling's. "[STAGE ERROR] PostStageEvent" @0xE04E33A8 is referenced by 0xE04E31EE (6-arg, timeout variant, calls 0xE043B310, 88 callers), not by 0xE04E3280. Cosmetic, but the deliverable states it as if 0xE04E3280 carries the string.
+
+5. Scope limit on claim 10's negative. "Never stored in a struct field" is verified only inside CompLosslessPath and 0xE032A346. The size is handed to 0xE04F961A(memSuite, size, 0xE0329C5D, ctx), which I did not follow — something downstream certainly records it to build the file. State the negative as "no SsDevelop-side struct field holds it", not as absolute.
+
+BONUS — the flagged next_action is already answered, and the answer is not the hoped-for one. 0xE02E839A is eight instructions:
+  push {r4,lr}; movs r4,#0; bl 0xE04EEA60; tst.w r0,#0x1D000; beq +0; movs r4,#1; mov r0,r4; pop
+0xE04EEA60(job) is a plain getter: verifies job[0] == *0xE0837350 ("JobClass") and returns job[+0x10] — the picture-type bitfield, the same word StartJob prints as UnitPict and the same word CompLosslessPath tests against 0x10000 and 0x1000 at 0xE0329D18/0xE0329D24. So the predicate is `(job->picttype & 0x1D000) != 0`: a bit test on a per-job field set at job creation, NOT a read of a settable shooting-menu property. Phase 2 does NOT collapse to "flip the flag" — changing it means reaching the job's pict type upstream, which is the same job-synthesis problem the write-up deferred. The next_action should be rewritten accordingly.

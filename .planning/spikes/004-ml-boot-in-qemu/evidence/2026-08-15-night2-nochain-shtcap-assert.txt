@@ -1,0 +1,45 @@
+# stock+ML, -d debugmsg,nochain: Startup stage 3 dies on KerRLock assert (excerpt)
+[CPU0] [    EventMgr:e00a324f ] (37:03) emRegisterMulticastCallback : EventID = 4, ClassID = 142
+[CPU0] [    EventMgr:e00a324f ] (37:03) emRegisterMulticastCallback : EventID = 8, ClassID = 142
+[CPU0] [    EventMgr:e00a324f ] (37:03) emRegisterMulticastCallback : EventID = 9, ClassID = 142
+[CPU0] [    EventMgr:e00a324f ] (37:03) emRegisterMulticastCallback : EventID = 10, ClassID = 142
+[CPU0] [    EventMgr:e00a324f ] (37:03) emRegisterMulticastCallback : EventID = 17, ClassID = 142
+[CPU0] [    EventMgr:e00a324f ] (37:03) emRegisterMulticastCallback : EventID = 18, ClassID = 142
+[CPU0] [    EventMgr:e00a324f ] (37:03) emRegisterMulticastCallback : EventID = 19, ClassID = 142
+[CPU0] [    EventMgr:e00a324f ] (37:03) emRegisterMulticastCallback : EventID = 21, ClassID = 142
+[CPU0] [ShootCapture:e01e5f1f ] (8e:03) scsIgnore
+[CPU0] [ShootCapture:e01e77f9 ] (8e:03) IsFactoryMenuMode:0
+[CPU0] [ShootCapture:e01e5f93 ] (8e:03) scsInit
+[CPU0] [ShootCapture:e028a6f5 ] (8c:03) InitializeHeadControl
+[CPU0] [     Startup:e0042cd9 ] (00:03) [STARTUP]startupCompleteCallback 0x80000
+[CPU0] [     Startup:e00491fb ] (00:02) [SEQ] NotifyComplete (Startup, Flag = 0x80000)
+[CPU0] [     Startup:e0049231 ] (00:03) [SEQ] NotifyComplete (Cur = 3, 0xc0000, Flag = 0x80000)
+[CPU1] [     Startup:e0040efd ] (89:06) ASSERT : SystemIF::KerRLock.c, Task = ShtCap
+[CPU1] [     PropMgr:e0040f0d ] (89:06) ASSERT : Core 1
+[CPU1] [     PropMgr:e0040f19 ] (89:06) ASSERT : Line 205
+[CPU1] [     PropMgr:e0040f25 ] (89:06) ASSERT : 0
+[CPU0] [     PropMgr:e0041481 ] (89:16) startupErrorRequestChangeCBR (0x1d)
+[CPU0] [     PropMgr:e00414b3 ] (89:16) startupErrorRequestChangeCBR : ErrorSend (101, ABORT)
+[CPU0] [      DbgMgr:e05ead8f ] (00:01) [PM] Disable (ID = 10, cnt = 3/5)
+[CPU0] [      DbgMgr:e05eae1b ] (00:01) [PM] Enable (ID = 10, cnt = 2/4)
+[CPU0] [      DbgMgr:e05ead8f ] (00:01) [PM] Disable (ID = 10, cnt = 3/5)
+[CPU0] [      DbgMgr:e05eae1b ] (00:01) [PM] Enable (ID = 10, cnt = 2/4)
+[CPU0] [      DbgMgr:e05ead8f ] (00:01) [PM] Disable (ID = 10, cnt = 3/5)
+[CPU0] [      DbgMgr:e05eae1b ] (00:01) [PM] Enable (ID = 10, cnt = 2/4)
+[CPU0] [      DbgMgr:e05ead8f ] (00:01) [PM] Disable (ID = 10, cnt = 3/5)
+[CPU0] [      DbgMgr:e05eae1b ] (00:01) [PM] Enable (ID = 10, cnt = 2/4)
+[CPU0] [      DbgMgr:e05ead8f ] (00:01) [PM] Disable (ID = 10, cnt = 3/5)
+[CPU0] [      DbgMgr:e05eae1b ] (00:01) [PM] Enable (ID = 10, cnt = 2/4)
+
+# later, ShtCapturePath assert:
+[CPU0] [     Panning:e07dfbc9 ] (dd:03) WAIT AUTO GYRO OFFSET
+[CPU0] [    PowerMgr:e07ddedf ] (dd:01) GyroOffsetTimerCBR(3190)
+[CPU0] [     Panning:e07dfbc9 ] (dd:03) WAIT AUTO GYRO OFFSET
+[CPU0] [ShootCapture:e0040efd ] (89:06) ASSERT : ./Shoot/ShtPath/ShtCapturePath/ShtCapturePath.c, Task = ShootCapture
+[CPU0] [ShootCapture:e0040f0d ] (89:06) ASSERT : Core 0
+[CPU0] [ShootCapture:e0040f19 ] (89:06) ASSERT : Line 154
+[CPU0] [ShootCapture:e0040f25 ] (89:06) ASSERT : 0
+[CPU0] [    PowerMgr:e07ddedf ] (dd:01) GyroOffsetTimerCBR(3300)
+[CPU0] [     Panning:e07dfbc9 ] (dd:03) WAIT AUTO GYRO OFFSET
+[CPU0] [    PowerMgr:e07ddedf ] (dd:01) GyroOffsetTimerCBR(3410)
+[CPU0] [     Panning:e07dfbc9 ] (dd:03) WAIT AUTO GYRO OFFSET

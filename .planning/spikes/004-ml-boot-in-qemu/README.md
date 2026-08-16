@@ -554,3 +554,240 @@ Core 1 now receives its own interrupts for the first time (0 → 6520 IRQ
 exceptions in 60 s), verified independently. That fix alone did NOT move the boot
 ceiling — the spell defect was the real gate — but the interrupt system is now
 measurably healthy on both cores, which retires it as a suspect.
+
+---
+
+## ML boot retest (post-breakthrough) — 2026-08-15 night, second pass
+
+Re-ran the whole thing now that stock firmware completes startup. Binary under
+test: `platform/6D2.111/build/zip/autoexec.bin`, **244 256 bytes**, md5
+`8cf3bfa93848ba37b82c0ff16677f43f` (rev-4 diagnostic build, 19:39; note this is
+0x3BA20, not the 0x3B8A0 quoted in the task brief). Card built with the mtools
+recipe from section 2 (base `ml/platform/sd.qcow2.xz`, boot sector verified to
+carry `EOS_DEVELOP` @0x2B and `BOOTDISK` @0x40 before and after insertion).
+Nothing in `ml/` or `qemu-eos/` was modified or rebuilt; all scratch outside both
+trees.
+
+### 1. ML loads, relocates, and runs — confirmed byte-exact
+
+Serial with `boot=1`:
+
+    <<<<< Musa(PU0) Boot Ver 0.19 >>>>>
+    BootLoad
+    SLOT_A LOAD OK.
+    Open file for read : AUTOEXEC.BIN
+    File size : 0x3BA20              <- 244 256, exact match
+    Now jump to AUTOEXEC.BIN(0x00800000)!!
+     K406 READY
+    [STARTUP]
+    K406 ICU Firmware Version 1.1.1 ( 6.4.9 )
+
+Canon's banner printing *after* the jump proves `boot-d678.c` relocation and
+firmware-entry patching still work. ML's own three messages appear in the
+debugmsg stream (callers outside ROM, resolved against `build/magiclantern`,
+which is linked at RESTARTSTART `0xE0F90` — so sym/ELF addresses are already
+runtime addresses, **bias = 0**):
+
+    00101a31  replacing task_dispatch_hook   -> boot_pre_init_task+0x24  (init.c:636)
+    00101a8d  Magic Lantern 2026-08-15.6D2.111 (3f24042a4 dev)  -> boot_post_init_task+0x20 (init.c:672)
+    00101a9b  Built on 2026-08-16 02:39:10 UTC by chris@legion  -> boot_post_init_task+0x2e (init.c:677)
+
+### 2. Control vs ML, same session, same 150 s, `-d debugmsg`
+
+| run | bootflag | stderr lines | Canon startup markers | last messages |
+|---|---|---|---|---|
+| stock (control) | boot=0 | **1558** | `startupCompleteCallback 0x10`, `[SEQ] NotifyComplete (Startup, Flag = 0x10)` | RTCMgr/I2C + PM Enable/Disable churn |
+| ML card | boot=1 | **1608** | identical, same line positions +46 | identical tail, byte for byte |
+
+ML is **+50 lines ahead**, not behind: its own 3 messages plus MPU/PM
+interleaving. Canon's startup still reaches `[SEQ] NotifyComplete (Startup,
+Flag = 0x10)` with ML present. (The 1558 vs the earlier session's 1581 is card
+content + run jitter, not a regression — the tail is identical.)
+
+### 3. Exactly where ML stops — measured with gdb, not inferred
+
+`boot_post_init_task` (0x101a6c) after the banner is one merged poll loop:
+
+    101ab6  ldr r3,[0x000100b8]   ; _rgb_vram_info  (Canon global, stubs.S:256)
+    101abc  ldr r3,[0x0015682c]   ; rgb_vram_info   (ML global)
+    101aee  msleep(100) ; b 101ab6
+    101ad8  task_create("ml_init", 0x1e, 0x4000, my_big_init_task, 0)   <- init.c:729
+
+Attached gdb (qemu started without `-S`, `-gdb tcp::1244`, attached after the
+boot settled) with four breakpoints; ran 8 continues:
+
+| breakpoint | source | hits |
+|---|---|---|
+| `*0x101ab6` | `rgb_vram_preinit`, bmp.h:70 | **4** |
+| `*0x101aee` | `msleep(100)`, init.c:713 | **4** |
+| `*0x101ad8` | `task_create("ml_init")`, init.c:729 | **0** |
+| `*0x1017c6` | `my_big_init_task`, init.c:413 | **0** |
+
+At every hit: `_rgb_vram_info` @0x100b8 = `0x00000000`, ML's `rgb_vram_info`
+@0x15682c = `0x00000000`.
+
+**ML's stopping point is `while (!rgb_vram_preinit()) msleep(100);`,
+src/init.c:712–713.** ML is alive and looping at 10 Hz, waiting for Canon to
+publish the RGBA GUI surface (`struct MARV *`). `my_big_init_task` never starts,
+so there is no `_mem_init`, no `_find_ml_card`, no file I/O, **no GUI, no menu**.
+
+Corroborating: after qemu exited, the card image contains no `ML/LOGS` at all
+(`mdir -i card.img@@50688 ::/ML/LOGS` → "File not found"), so `RAWDIAG.LOG`
+captured nothing — expected, since `diag_log` lives in `src/exmem.c:211` /
+`mlv_lite.c:391`, both far downstream of `my_big_init_task`. This build also has
+`CONFIG_STARTUP_LOG` **off** (no `Logging started.` message), so there is no
+startup log either.
+
+### 4. Why `_rgb_vram_info` is never written — Canon's startup sequencer stalls
+
+`[SEQ] CreateSequencer (Startup, Num = 6)`. Stage progression in the plain
+(TB-chained) run, identical stock and ML:
+
+    stage 0: 0x10000 (init) 0x2000000 (RomRead) 0x8000 (SFRead)   -> seqEventDispatch 0
+    stage 1: 0x2 (PowerMgr)                                       -> seqEventDispatch 1
+    stage 2: 0x20000000 (Startup) 0x20000 (RscMgr) 0x10 (FileMgr) -> 0x400000 STILL OUTSTANDING
+
+`seqEventDispatch (Startup, 2)` never fires, so stages 3–5 never run — and the
+GUI/WINSYS bring-up that writes `_rgb_vram_info` (stubs.S:256: "written to in
+InitializeScreen"; ROM literal-pool refs to 0x000100B8 at 0xE0885ADC, 0xE088656C,
+0xE0886FFC, 0xE08B9D4C, 0xE08BA7DC) is behind it.
+
+Flag 0x400000 identified statically. `startupCompleteCallback` = **0xE0042CCC**
+(prologue `push {r4,lr}`; the logged `e0042cd9` is its DebugMsg return address;
+tail-calls NotifyComplete at 0xE00491E8). ROM0 has exactly one direct `BL` to it
+(0xE0041CC2, hardcoded 0x20000000) and four literal-pool copies of `0xE0042CCD`;
+the one at 0xE00423E8 is consumed at:
+
+    e0042024  ldr r0,=0xE0042CCD          ; startupCompleteCallback
+    e0042026  mov.w r1,#0x400000
+    e004202a  bl 0xE0658104               ; FM_Prepare  (error string 'FM_Prepare (%#x)' @0xE00423EC,
+                                          ;  asserts against './FileMgr/FileMgr.c')
+
+So **0x400000 = FileMgr's `FM_Prepare` completion**. FileMgr's last forward
+progress in the chained run:
+
+    fmPrepare -> @FileMgr FIO_Init(25,28,...) -> CSMGR_Initialize
+      -> InitializeLogicalStorage: LStorageList = NULL -> SocketServiceInstall: SUCCESS
+      -> FIO_GetSupportedDriveInfo -> InitializeSDDriver     <- last message, then nothing
+
+`-d sdcf,verbose` over a full run: **zero** SDIO/CF controller lines. The SD
+driver writes an undecoded MMIO block at 0xD2090600–0xD209064C / 0xD209F218–
+0xD209F224 / 0xD209B140 (qemu-eos prints these as `[DIGIC6] ??? `; the modelled
+SDIO handlers are at 0xC0C0xxxx / 0xC805xxxx / 0xD074xxxx / 0xD2B1xxxx, none of
+which the 6D2 touches).
+
+### 5. The FileMgr stall is a *timing race*, not a missing device — `-d nochain` clears it
+
+Discovered by accident while capturing an `-d io` trace (`io` implies
+`CPU_LOG_TB_NOCHAIN`, util/log.c:280). Isolated with `nochain` alone:
+
+| run | flags | debugmsgs | how far |
+|---|---|---|---|
+| stock 150 s | `debugmsg` | 1558 | stage 2, 0x400000 outstanding |
+| ML 150 s | `debugmsg` | 1608 | same |
+| stock 40 s | `debugmsg,io` | 2721 | **stage 3**, gyro wait |
+| stock 150 s | `debugmsg,nochain` | 4770 | **stage 3**, gyro wait |
+| ML 150 s | `debugmsg,io` | 4758 | **stage 3**, gyro wait |
+| ML 150 s | `debugmsg,nochain` (+gdb) | 4708 | **stage 3**, gyro wait |
+
+With TB chaining disabled the guest runs slower and FileMgr completes:
+`startupCompleteCallback 0x400000` → `NotifyComplete (Cur = 2, 0x400000, Flag =
+0x400000)` → `seqEventDispatch (Startup, 2)` → `startupPrepareCapture`,
+`WaitPU1 TimeOut`, `[MNAV] MEMNAVI_Initialize`, EventMgr multicast registration,
+`ShootCapture scsInit`, `InitializeHeadControl`, `startupCompleteCallback
+0x80000` (`SBS_Initialize`), `NotifyComplete (Cur = 3, 0xc0000, ...)`.
+
+### 6. New ceiling at the deeper boot — a Core-1 lock assert, same with and without ML
+
+Immediately after stage 3 opens, in both stock and ML runs:
+
+    [CPU1] Startup:e0040efd  ASSERT : SystemIF::KerRLock.c, Task = ShtCap
+    [CPU1]                   ASSERT : Core 1
+    [CPU1]                   ASSERT : Line 205
+    [CPU0] PropMgr:e0041481  startupErrorRequestChangeCBR (0x1d)
+    [CPU0] PropMgr:e00414b3  startupErrorRequestChangeCBR : ErrorSend (101, ABORT)
+    ... then, ~80 gyro ticks later ...
+    [CPU0] ShootCapture:e0040efd ASSERT : ./Shoot/ShtPath/ShtCapturePath/ShtCapturePath.c, Task = ShootCapture
+    [CPU0]                       ASSERT : Core 0, Line 154
+
+`SCS_Initialize` (registered at 0xE0042104 with flag **0x40000**, error string
+`'SCS_Initialize (%#x)'` @0xE0042460) therefore never completes, stage 3 hangs
+with 0x40000 outstanding, and the run degenerates into the `Panning: WAIT AUTO
+GYRO OFFSET` / `PowerMgr: GyroOffsetTimerCBR(n)` pair repeating forever (854 of
+each in the last 1700 messages of a 60 s run) — the only remaining activity.
+
+ML is present for none of this: with `boot=0` there is no ML in the machine and
+the assert, the flag, and the gyro loop are identical.
+
+### 7. Verdict
+
+- **ML boots further than ever measured and is not the limiter.** Loads
+  (0x3BA20 exact), relocates, hooks task dispatch, prints its banner, and parks
+  in a legitimate wait for Canon's GUI surface. Zero ML-attributable failures.
+- **ML does NOT reach GUI/menu**, and cannot until Canon's startup sequencer
+  gets past stage 2 (chained) / stage 3 (nochain), because
+  `_rgb_vram_info` is written by the WINSYS/`InitializeScreen` stage that lives
+  behind those gates.
+- Every prior attribution to ML in this spike is now retired: the original
+  "spin PCs" (logger overhead), the `_reloc`/`cstart` theory (refuted), and the
+  "GlobalVectorInit stall" (long since passed).
+
+### 8. Next levers, in order
+
+1. **`SystemIF::KerRLock.c:205` assert on Core 1 (`ShtCap`).** This is the hard
+   gate on 0x40000/`SCS_Initialize` and therefore on everything visual. It is a
+   kernel *resource-lock* assert raised on the second core — the same defect
+   class as the per-core interrupt work already landed. Disassemble around
+   0xE0040EFC (`ASSERT` printer) callers and find the KerRLock entry that fails;
+   check whether qemu-eos's second-core model satisfies whatever lock-owner /
+   `current_task` per-core state it reads (6D2 `current_task_addr = 0x28`,
+   `model_list.c:619`, is a single global — suspicious on a 2-core machine).
+2. **The FileMgr/SD timing race.** A chained-TB run stalls at
+   `InitializeSDDriver` 100 % of the time here (2 runs this session, plus the
+   1581-line run last session); `nochain` passes it every time (3/3). Either
+   model the 0xD2090600 SD block or find why the chained run drops the driver's
+   completion. Until then, **run 6D2 boots with `-d nochain`** — it is worth
+   ~3x more boot progress and costs only speed.
+3. The gyro/`Panning` loop is downstream of (1) and probably needs an ADC/gyro
+   value that settles; do not chase it before the KerRLock assert.
+
+**Reproduce**
+
+    # card
+    xz -dc ml/platform/sd.qcow2.xz > base.qcow2
+    qemu-img convert -O raw base.qcow2 card.img
+    MTOOLS_SKIP_CHECK=1 mcopy -i card.img@@50688 -s -o -Q \
+        ml/platform/6D2.111/build/zip/* ::/
+    mdir -i card.img@@50688 ::/            # verify
+    qemu-img convert -O qcow2 card.img sd.qcow2 ; cp sd.qcow2 cf.qcow2
+    # run: QemuRunner, model 6D2, boot=True, d_args=["debugmsg"] (add "nochain"
+    #   for the deep boot), monitor socket path < 108 bytes.
+    # gdb: append ["-gdb","tcp::1244"] to q.qemu_command (do NOT use gdb_port=,
+    #   that adds -S and the breakpoints would be written before ML is in RAM);
+    #   attach after boot settles, symbols from build/magiclantern (bias 0).
+    # ALWAYS let qemu exit before reading the card image back.
+
+Evidence added: `evidence/2026-08-15-night2-ml-serial.txt` (bootloader loading
+our binary), `evidence/2026-08-15-night2-ml-gdb-rgbvram-wait.txt` (the gdb
+breakpoint session), `evidence/2026-08-15-night2-nochain-shtcap-assert.txt`
+(the KerRLock / ShtCapturePath asserts at the deeper ceiling).
+
+
+---
+
+## ADVERSARIAL VERIFICATION — headline SURVIVES, three supporting numbers corrected
+
+An independent agent re-derived these claims from primary sources (HOLDS: False).
+Act on the corrected version below, not on the text above where they conflict.
+
+Three sub-claims need rewriting.
+
+1. "ML gets 50 lines FURTHER than the stock control" — WRONG FRAMING. My matched pair gives 1579 (stock) vs 1614 (ML), +35. I diffed the two logs: the delta is NOT boot progress. It is (i) extra repetitions of the idle "[PM] Enable/Disable" and RTCMgr I2C churn that both runs loop in at the end, (ii) CPU1 cache-maintenance MRC/MCR lines produced by ML's own mmu_init/RPC (e.g. "[CPU1] E0004BC4: MCR ... CACHEMAINT x898"), (iii) qemu's own "Setting BOOTDISK flag at E1FF8004" line that only appears with firmware=boot=1, and (iv) ML's 3 real messages. The two logs' tails are line-for-line identical and BOTH stop at the identical sequencer point "[SEQ] NotifyComplete (Cur = 2, 0x400010, Flag = 0x10)" with startupCompleteCallback seen for 0x2/0x10/0x20000/0x20000000 in each. Correct statement: "ML causes no regression — stock and ML reach exactly the same Canon startup stage; the small line-count difference is idle-loop churn plus ML's own output, not extra progress." (The only genuine ML footprint on Canon is a heap/stack pointer shift: FIO_GetSupportedDriveInfo(0x21ef9c) stock vs (0x2201ac) with ML.)
+
+2. "`-d sdcf,verbose` over a whole run: zero SDIO/CF lines" — FALSE AS WRITTEN. My boot=1 run with -d debugmsg,sdcf,verbose logged 170 "[SDIO] Command …/Response received" lines. All 170 fall in stderr lines 130–299 — the Musa bootloader reading AUTOEXEC.BIN off the card, long before Canon's main firmware. "InitializeSDDriver" appears at line 1689 and produces zero further SD command traffic. The other agent's zero came from probing a boot=0 run, where the bootloader never touches the card, so the probe could not have shown anything either way. The corrected statement is stronger, not weaker: the modelled SDIO controller demonstrably WORKS (it served a 244256-byte file read), therefore the DryOS SD driver's failure to issue a single command is not "qemu has no SD". Also, "the SD block it touches is unmodelled" is only half right: in my -d io run FileMgr touches BOTH modelled and unmodelled space — 53 accesses in the [SDIO] region at 0xC80500xx/0xC8050090/0xC80500D8/0xC80500DC (that is qemu-eos's SDIO85 handler, eos.c "SDIO85" 0xC8050000–0xC8050FFF), 6 in [SDDMA], 55 in [TIMER], and 41 logged as "[DIGIC6] … : ???" at the unmodelled 0xD2090600/0608/060C/0610/0614/0618/0634/063C, 0xD209F200/F204/F208/F218/F224, 0xD209B080/B140. Correct statement: "FileMgr's SD driver drives a mix of modelled SDIO85/SDDMA registers and a wholly unmodelled 0xD209xxxx block, and completes no SD command; the only real SD traffic in any run is the bootloader's."
+
+3. "ML cannot reach its GUI until Canon's WINSYS/InitializeScreen stage runs — ROM0 literal-pool refs to 0x000100B8 only at 0xE0885ADC, 0xE088656C, 0xE0886FFC, 0xE08B9D4C, 0xE08BA7DC (WINSYS region)" — THE ADDRESS LIST REPRODUCES, THE INTERPRETATION IS WRONG. My own scan of ROM0 finds exactly those five word-aligned occurrences of the constant 0x000100B8 and no others. But they are not literal pools in code. Disassembling 0xE0885A80 gives a long run of the repeating word 0x00400040 (a numeric table), and the ±0x600 neighbourhoods of all five hits contain float/data tables, no strings and no code. The "InitializeScreen %#x %#x" format strings live at 0xE04C61DC and 0xE04C61F8 — nowhere near any of the five. The method is also wrong in principle: _rgb_vram_info at 0x100b8 sits in Canon's low RAM alongside 0x100bc (bmp_vram_info) and 0x100cc (display_refresh_needed), i.e. fields of one small struct, which ARM code will reach as base+offset from a base register — invisible to a scan for the exact 32-bit constant. Correct statement: "the five hits are coincidental data words; the ROM site that writes _rgb_vram_info was not located. What is measured is that _rgb_vram_info stays 0 in every run, chained and nochain, stock and ML."
+
+Two smaller fixes: (i) "roughly triples boot progress (1558 → 4770 messages)" — my nochain runs give 7307/7325 vs 1579/1614 (4.6x), but ~3180 of the nochain lines (44%) are the post-assert "WAIT AUTO GYRO OFFSET"/"GyroOffsetTimerCBR" idle loop whose count scales with wall-clock, not with progress. The real gain is precise and should be stated as such: one extra sequencer stage (stage 2 dispatches; Cur reaches 3, 0xc0000) plus the stage-3 init that follows, up to the KerRLock assert. Message counts are not a progress metric here. (ii) "timing race, not a missing device" is an over-read of one knob: -d nochain also implies -singlestep, which changes interrupt-delivery granularity and TB boundaries, not just timing; and the 0xD2090600 block really is undecoded. The deliverable's own unresolved list says this correctly — the "established" bullet should be softened to match it. Determinism is now better supported than the deliverable claims: 5/5 chained stall (mine) + 3 theirs = 8/8, and 3/3 nochain pass (mine) + theirs.
+
+Evidence lives in /tmp/claude-1000/-home-chris-Vibe-Coding-6D-Mark-II-Magic-Lantern-6D2/d1809f97-1ab5-4672-8a2b-1ab8dcfa3d5e/scratchpad/advver/ — runs/{ctl,ml,ctlnc,mlnc,sdcf,r1,r2,io}/{stderr.log,serial.log}, runs/gdb/gdb.log, guest_text.bin, ml.img, run.py, gdbprobe.sh. No project file was created or edited.

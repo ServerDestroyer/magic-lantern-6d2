@@ -1,0 +1,71 @@
+### GDB STDOUT
+0xe02c6100 in ?? ()
+
+== attached ==
+pc             0xe02c6100          0xe02c6100
+cpsr           0x600000f3          1610612979
+0x100b8:	0x00000000
+0x15682c <rgb_vram_info>:	0x00000000
+Breakpoint 1 at 0x101ab6: file ../../src/bmp.h, line 70.
+Breakpoint 2 at 0x101aee: file ../../src/init.c, line 713.
+Breakpoint 3 at 0x101ad8: file ../../src/init.c, line 729.
+Breakpoint 4 at 0x1017c6: file ../../src/init.c, line 413.
+
+Thread 1 hit Breakpoint 1, rgb_vram_preinit () at ../../src/bmp.h:70
+70	    struct MARV *MARV = _rgb_vram_info;
+pc             0x101ab6            0x101ab6 <boot_post_init_task+74>
+0x100b8:	0x00000000
+0x15682c <rgb_vram_info>:	0x00000000
+
+Thread 1 hit Breakpoint 2, boot_post_init_task () at ../../src/init.c:713
+713	        msleep(100);
+pc             0x101aee            0x101aee <boot_post_init_task+130>
+0x100b8:	0x00000000
+0x15682c <rgb_vram_info>:	0x00000000
+
+Thread 1 hit Breakpoint 1, rgb_vram_preinit () at ../../src/bmp.h:70
+70	    struct MARV *MARV = _rgb_vram_info;
+pc             0x101ab6            0x101ab6 <boot_post_init_task+74>
+0x100b8:	0x00000000
+0x15682c <rgb_vram_info>:	0x00000000
+
+Thread 1 hit Breakpoint 2, boot_post_init_task () at ../../src/init.c:713
+713	        msleep(100);
+pc             0x101aee            0x101aee <boot_post_init_task+130>
+0x100b8:	0x00000000
+0x15682c <rgb_vram_info>:	0x00000000
+
+Thread 1 hit Breakpoint 1, rgb_vram_preinit () at ../../src/bmp.h:70
+70	    struct MARV *MARV = _rgb_vram_info;
+pc             0x101ab6            0x101ab6 <boot_post_init_task+74>
+0x100b8:	0x00000000
+0x15682c <rgb_vram_info>:	0x00000000
+
+Thread 1 hit Breakpoint 2, boot_post_init_task () at ../../src/init.c:713
+713	        msleep(100);
+pc             0x101aee            0x101aee <boot_post_init_task+130>
+0x100b8:	0x00000000
+0x15682c <rgb_vram_info>:	0x00000000
+
+Thread 1 hit Breakpoint 1, rgb_vram_preinit () at ../../src/bmp.h:70
+70	    struct MARV *MARV = _rgb_vram_info;
+pc             0x101ab6            0x101ab6 <boot_post_init_task+74>
+0x100b8:	0x00000000
+0x15682c <rgb_vram_info>:	0x00000000
+
+Thread 1 hit Breakpoint 2, boot_post_init_task () at ../../src/init.c:713
+713	        msleep(100);
+pc             0x101aee            0x101aee <boot_post_init_task+130>
+0x100b8:	0x00000000
+0x15682c <rgb_vram_info>:	0x00000000
+Num     Type           Disp Enb Address    What
+1       breakpoint     keep y   0x00101ab6 in rgb_vram_preinit at ../../src/bmp.h:70
+	breakpoint already hit 4 times
+2       breakpoint     keep y   0x00101aee in boot_post_init_task at ../../src/init.c:713
+	breakpoint already hit 4 times
+3       breakpoint     keep y   0x00101ad8 in boot_post_init_task at ../../src/init.c:729
+4       breakpoint     keep y   0x001017c6 in my_big_init_task at ../../src/init.c:413
+[Inferior 1 (process 1) detached]
+
+### GDB STDERR
+
