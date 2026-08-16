@@ -23,10 +23,19 @@ Results (full record: `spikes/006-rawvideo-memory/README.md`):
    dead state ("No memory suites." spam, second REC would fail); 92 MB
    shoot-pool shrink between alloc cycles.
 
-## Session 2 — after Track A lands: MPU spell capture run (the critical path)
+## Session 2 — DONE 2026-08-15 17:24: MPU spell capture run (the critical path)
 
-Blocked on the A/B build (Track A, running). When `card_packages/capture/`
-appears in the repo, that package is QEMU-verified and body-ready:
+Results: capture SUCCEEDED on the first run. `DEBUGMSG.LOG` landed at the
+**card root** (not `ML/LOGS/`), 522 KB, DIAG trailer intact, 6530 messages,
+0 drops, **71 mpu_send + 104 mpu_recv** (QEMU could only give 23+3). Console
+photo shows "Modules loaded" over the sensor-cleaning screen. Extraction
+needed a UTF-8 sanitize pass (raw bytes in the body log). Output:
+`tools/6D2_spells_body.h` (~175 spells) → `patches/0007` wires it into
+qemu-eos. **Verified: stock 6D2 firmware in QEMU no longer hits the RscMgr
+assert** — boots on through NFC/LiveView property init. Spike 001 closed.
+Card restored to the raw-video daily build afterwards (Session 3 also done).
+
+Original steps for the record:
 
 1. PC: `tools/sync_card.sh <card-mount> card_packages/capture`
    (script verifies md5s; refuses to pass a bad sync).

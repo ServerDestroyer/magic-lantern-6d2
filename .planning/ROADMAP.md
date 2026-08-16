@@ -16,10 +16,15 @@ This file is the status ledger: what is done, what is in flight, what is next.
 | 1 | ARM toolchain + deps | **DONE** | `shell.nix` (project-local, deliberately not in the NixOS system config) |
 | 2 | Build ML for 6D2 | **DONE** | `ml/platform/6D2.111/build/autoexec.bin`, 243 KB, 1296 symbols in `6D2_111.sym`, built 2026-08-15 12:11 |
 | 3 | Dump ROMs from camera | **DONE** | `roms/6D2/{ROM0,ROM1}.BIN`, dumped 2025-09-29, verified genuine |
-| 4 | qemu-eos boots stock firmware | **PARTIAL — root cause known** | Firmware does *not* halt; it completes startup via `ErrorSend (101, ABORT)`. The `RscMgr` assert is a switch-with-no-default over frame rate receiving 81 (garbage) because qemu-eos has **no 6D2 MPU spells**. Not the SD card — assert fires with no card at all. → spike 001 |
+| 4 | qemu-eos boots stock firmware | **DONE (2026-08-15 body capture)** | Body run captured 522 KB `DEBUGMSG.LOG` (6530 msgs, 0 drops, 71 mpu_send + 104 mpu_recv) → `patches/0007` adds real `mpu_spells/6D2.h` (~175 spells) to qemu-eos. Stock boot verified: **no RscMgr assert, no Irregular TotalSheets, no ErrorSend**; firmware still progressing (NFC/LiveView props) at 90 s kill. Artifacts: `tools/6D2-DEBUGMSG-body.txt`, `tools/6D2_spells_body.h`. Closes spike 001. |
 | 5 | Boot our ML build in QEMU | **DONE — ML boots** | `autoexec.bin` loads (`File size : 0x3BA40` = our exact byte count), `boot-d678.c` relocation works, ML prints its own banner from `boot_post_init_task`. Fails just after: both cores spin at `0x001037A8`/`0x0010390C` inside ML's relocated image. → spike 004 |
 
-### The blocker, stated once
+### The blocker, stated once — RESOLVED 2026-08-15
+
+**Resolved by the Session 2 body run:** real 6D2 MPU spells captured on the
+body, extracted to `patches/0007-qemu-eos-6D2-mpu-spells.patch`, verified in
+QEMU (RscMgr assert gone, stock firmware boots onward). QEMU is now a usable
+debug rig. History below kept for the record.
 
 QEMU cannot boot the 6D2 far enough to be a debug rig until qemu-eos has **6D2
 MPU spells**. The loop only breaks by capturing from the real body — see
