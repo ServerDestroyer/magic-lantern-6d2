@@ -526,3 +526,31 @@ reply `08 06 01 a7 00 01`), not the GIC. Next lever: capture a LONGER body
 startup log (bigger CONFIG_STARTUP_LOG buffer or later dump) to harvest the
 GUI-stage spells, and/or make_button_codes for the 6D2. The agent's structural
 follow-ups (per-CPU iar/irq_id or adopting intc/arm_gic.c) remain open.
+
+## BREAKTHROUGH 2026-08-15 night: stock 6D2 firmware now COMPLETES STARTUP in QEMU
+
+Boot progress went from **473 → 1581** stderr lines (3.3x) after two changes:
+
+1. **The gating spell defect (spike 005 gui-stage-gap-analysis, verified):** the
+   extractor's `num > 1` rule had commented out the Mode group reply
+   (`94 93 02 0e ...`, property 0x80000001) in `mpu_spells/6D2.h` spell #5.
+   Without it the guest never emits the `08 06 00 00 02 0e 00 00` ack that gates
+   spell #6 onward. Un-commented by hand with a provenance note.
+2. **6D2 button codes** (spike 009) — statically decoded from ROM0, no Unicorn
+   and no body run needed. Landed into `button_codes.h` + `MPU_BUTTON_CODES(6D2)`.
+   NOTE: mpu.c's key_map check `exit(1)`s on any gui_code missing from the table;
+   the 6D2 has no physical zoom-out button, so the internal switch 0x0A codes
+   (same numbering as the 200D, confirmed present in our ROM decode) are supplied.
+   Landing the table without them made qemu exit at startup — a real trap.
+
+Boot now reaches: `GISS_Initialize : End`, `GIS_Initialize : End`,
+`[STARTUP]startupCompleteCallback 0x10`, `[SEQ] NotifyComplete (Startup, Flag =
+0x10)`, then RTCMgr/I2C traffic. Zero ASSERT / Irregular TotalSheets / ErrorSend.
+
+Also landed this wave: the **per-core interrupt fix** (patch 0008) — the 6D2 has
+a two-level architecture (one GIC carrying 4 INTIDs plus TWO per-core Canon
+controllers at 0xD4011000/0xD5011000, the core-1 bank never decoded by qemu-eos).
+Core 1 now receives its own interrupts for the first time (0 → 6520 IRQ
+exceptions in 60 s), verified independently. That fix alone did NOT move the boot
+ceiling — the spell defect was the real gate — but the interrupt system is now
+measurably healthy on both cores, which retires it as a suspect.
