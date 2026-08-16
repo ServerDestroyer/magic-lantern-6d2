@@ -1,0 +1,14 @@
+[2.014] [probe] max 135MB steps 34 slowest 98ms@136MB last TIMEOUT
+[19.107] raw inactive: lv=0 movie=1 gui=1
+[51.561] [probe] max 135MB steps 34 slowest 100ms@136MB last TIMEOUT
+[53.078] raw inactive: lv=0 movie=1 gui=1
+[54.397] [probe] max 135MB steps 34 slowest 93ms@136MB last TIMEOUT
+[71.400] raw inactive: lv=0 movie=0 gui=0
+[85.462] [probe] max 135MB steps 34 slowest 95ms@136MB last TIMEOUT
+[100.062] No memory suites. lv=1 movie=1 gui=0 rawact=1 rec=0 suites=0/0
+[101.096] No memory suites. lv=1 movie=1 gui=0 rawact=1 rec=0 suites=0/0
+[102.179] No memory suites. lv=1 movie=1 gui=0 rawact=1 rec=0 suites=0/0
+[103.262] No memory suites. lv=1 movie=1 gui=0 rawact=1 rec=0 suites=0/0
+[104.313] No memory suites. lv=1 movie=1 gui=0 rawact=1 rec=0 suites=0/0
+[105.456] No memory suites. lv=1 movie=1 gui=0 rawact=1 rec=0 suites=0/0
+[106.638] No memory suites. lv=1 movie=1 gui=0 rawact=1 rec=1 suites=0/0

@@ -1,5 +1,5 @@
 diff --git a/modules/raw_video/mlv_lite/mlv_lite.c b/modules/raw_video/mlv_lite/mlv_lite.c
-index d05b83ffc..4ce3a5727 100644
+index d05b83ffc..6b030aa44 100644
 --- a/modules/raw_video/mlv_lite/mlv_lite.c
 +++ b/modules/raw_video/mlv_lite/mlv_lite.c
 @@ -374,8 +374,42 @@ static GUARDED_BY(RawRecTask)   mlv_rtci_hdr_t rtci_hdr;
@@ -76,22 +76,23 @@ index d05b83ffc..4ce3a5727 100644
              gui_uilock(UILOCK_EVERYTHING);
              take_semaphore(settings_sem, 0);
              free_buffers();
-@@ -2065,6 +2114,14 @@ unsigned int raw_rec_polling_cbr(unsigned int unused)
+@@ -2065,6 +2114,15 @@ unsigned int raw_rec_polling_cbr(unsigned int unused)
          return 0;
      }
  
-+#if 0 /* spike 006 re-arm fix — enable only after step 1 confirms the dead state */
-+    /* both suites NULL while raw video active and idle -> realloc */
++    /* spike 006 re-arm fix. Dead state confirmed on hardware 2026-08-15
++     * (RAWDIAG session 1): after auto-stop, suites=0/0 with rawact=1, and a
++     * REC press in that state starts with zero slots and hard-freezes.
++     * Both suites NULL while raw video active and idle -> realloc. */
 +    if (!shoot_mem_suite && !srm_mem_suite && raw_video_active && RAW_IS_IDLE)
 +    {
 +        realloc = 1;
 +    }
-+#endif
 +
      /* reallocate buffers if needed (only if not recording) */
      if (realloc && (RAW_IS_IDLE || RAW_IS_PREPARING) && gui_state == GUISTATE_IDLE)
      {
-@@ -2913,6 +2970,11 @@ void process_frame(int next_fullsize_buffer_pos)
+@@ -2913,6 +2971,11 @@ void process_frame(int next_fullsize_buffer_pos)
      /* set VIDF metadata for this frame */
      vidf_hdr.frameNumber = slots[capture_slot].frame_number - 1;
      mlv_set_timestamp((mlv_hdr_t*)&vidf_hdr, mlv_start_timestamp);
@@ -103,7 +104,7 @@ index d05b83ffc..4ce3a5727 100644
      vidf_hdr.cropPosX = (skip_x + 7) & ~7;
      vidf_hdr.cropPosY = skip_y & ~1;
      vidf_hdr.panPosX = skip_x;
-@@ -3204,7 +3266,24 @@ static REQUIRES(RawRecTask)
+@@ -3204,7 +3267,24 @@ static REQUIRES(RawRecTask)
  void finish_chunk(FILE *f, int card_index)
  {
      file_hdr[card_index].videoFrameCount = chunk_frame_count[card_index];
@@ -129,7 +130,7 @@ index d05b83ffc..4ce3a5727 100644
      /* call the CBRs which may update fields */
      mlv_rec_call_cbr(MLV_REC_EVENT_BLOCK, (mlv_hdr_t *)&file_hdr[card_index]);
      
-@@ -3381,6 +3460,8 @@ void raw_video_rec_task(uint32_t card_index)
+@@ -3381,6 +3461,8 @@ void raw_video_rec_task(uint32_t card_index)
          for (int t = 0; t < CARD_COUNT; ++t) {
              chunk_frame_count[t] = 0;
          }
@@ -138,7 +139,7 @@ index d05b83ffc..4ce3a5727 100644
          mlv_chunk = 0;
          buffer_full = 0;
  
-@@ -3463,7 +3544,7 @@ void raw_video_rec_task(uint32_t card_index)
+@@ -3463,7 +3545,7 @@ void raw_video_rec_task(uint32_t card_index)
              beep();
          }
  

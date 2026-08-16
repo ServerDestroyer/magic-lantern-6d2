@@ -162,3 +162,25 @@ measured fps exactly: `footage/M15-1921.MLV` 169f @ 29.970, `M15-1924.MLV`
 Tests 1/2/4 console data lost (display-only build, no photos) — rerun on
 rev 3, which self-records to ML/LOGS/RAWDIAG.LOG. Card now carries rev 3
 (autoexec 8dd0cd24).
+
+## RAWDIAG SESSION 1 (2026-08-15 ~19:30, rev 3): DEAD STATE CONFIRMED, RE-ARM FIX ENABLED (rev 4)
+
+First photo-free session — `tools/RAWDIAG-session1.txt` captured everything:
+- **Bug 2 confirmed end-to-end with state values.** After auto-stop:
+  `No memory suites. lv=1 movie=1 gui=0 rawact=1 rec=0 suites=0/0` at 1 Hz for
+  7 s, then `rec=1 suites=0/0` — REC pressed in dead state **starts recording
+  with zero slots and hard-freezes** (battery pull; screen stayed lit through
+  power-off). Worse than the predicted instant auto-stop. First take of the
+  pair finalized fine (`footage/M15-1934.MLV`, 57f @ 59.943 measured).
+- **Probe stop-condition answered:** all 4 autodetect runs end at 136 MB via
+  allocator TIMEOUT (98–100 ms ≈ the 100 ms `take_semaphore` cap in
+  `shoot_malloc_suite_int`), max stable at 135 MB — no shrink, but autodetect
+  always terminates by timeout, never by clean failure.
+- **Menu-cycle mechanism:** every ML menu open drops LV → free branch fires
+  (`raw inactive: lv=0 movie=1 gui=1`) → realloc + full re-probe on close.
+  This is why the menu-open workaround cures the dead state.
+- **Action taken:** re-arm fix un-#if-0'd (mlv_lite.c ~2117) = **rev 4**, built,
+  patch 0006 regenerated, card synced (mlv_lite.mo `4bed61bb`). Retest: repeat
+  test 1 — expect the second REC to just work (suites realloc within a polling
+  tick). Remaining hazard: REC while suites are momentarily 0/0 still hangs —
+  a refuse-to-start guard is the defensive fix if re-arm proves insufficient.
