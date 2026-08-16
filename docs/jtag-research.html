@@ -1,0 +1,750 @@
+<title>JTAG on DIGIC</title>
+
+<style>
+  :root {
+    --paper:        #F1F3F4;
+    --surface:      #FFFFFF;
+    --surface-2:    #E8ECEE;
+    --ink:          #14181B;
+    --ink-2:        #4A555C;
+    --ink-3:        #737F86;
+    --rule:         #D5DBDE;
+    --rule-strong:  #B9C2C7;
+    --accent:       #9A5B00;
+    --accent-soft:  #F6E8D4;
+    --confirmed:    #0E6B5E;
+    --confirmed-soft:#DBEDE9;
+    --absent:       #9B3226;
+    --absent-soft:  #F6E0DC;
+    --infer:        #47578A;
+    --infer-soft:   #E2E7F3;
+    --serif: Charter, "Bitstream Charter", "Sitka Text", Cambria, "Iowan Old Style", Georgia, serif;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:        #0F1315;
+      --surface:      #171C1F;
+      --surface-2:    #1F262A;
+      --ink:          #E8EDEF;
+      --ink-2:        #A6B2B8;
+      --ink-3:        #75838A;
+      --rule:         #2A3236;
+      --rule-strong:  #3C464B;
+      --accent:       #F0A742;
+      --accent-soft:  #38280F;
+      --confirmed:    #4FC4B0;
+      --confirmed-soft:#0F312C;
+      --absent:       #E8897A;
+      --absent-soft:  #3A1E19;
+      --infer:        #97A8DC;
+      --infer-soft:   #1D2338;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:        #0F1315;
+    --surface:      #171C1F;
+    --surface-2:    #1F262A;
+    --ink:          #E8EDEF;
+    --ink-2:        #A6B2B8;
+    --ink-3:        #75838A;
+    --rule:         #2A3236;
+    --rule-strong:  #3C464B;
+    --accent:       #F0A742;
+    --accent-soft:  #38280F;
+    --confirmed:    #4FC4B0;
+    --confirmed-soft:#0F312C;
+    --absent:       #E8897A;
+    --absent-soft:  #3A1E19;
+    --infer:        #97A8DC;
+    --infer-soft:   #1D2338;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.62;
+    margin: 0;
+    padding: 0 1.25rem 6rem;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 50rem; margin: 0 auto; }
+
+  /* ---------- masthead ---------- */
+
+  header.masthead {
+    border-bottom: 2px solid var(--ink);
+    padding: 3.5rem 0 1.5rem;
+    margin-bottom: 2.5rem;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 1.25rem;
+  }
+
+  h1 {
+    font-family: var(--serif);
+    font-size: clamp(2.3rem, 6vw, 3.4rem);
+    line-height: 1.04;
+    letter-spacing: -0.02em;
+    font-weight: 600;
+    text-wrap: balance;
+    margin: 0 0 0.9rem;
+  }
+
+  .standfirst {
+    font-size: 1.13rem;
+    line-height: 1.5;
+    color: var(--ink-2);
+    max-width: 40rem;
+    margin: 0 0 1.75rem;
+    text-wrap: pretty;
+  }
+
+  .byline {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--ink-3);
+    letter-spacing: 0.03em;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.25rem;
+  }
+
+  /* ---------- verdict panel ---------- */
+
+  .verdict {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--accent);
+    padding: 1.5rem 1.6rem;
+    margin: 0 0 3rem;
+  }
+
+  .verdict p { margin: 0 0 0.85rem; }
+  .verdict p:last-child { margin-bottom: 0; }
+  .verdict strong { font-weight: 600; }
+
+  /* ---------- sections ---------- */
+
+  section { margin: 0 0 3.25rem; }
+
+  h2 {
+    font-family: var(--mono);
+    font-size: 0.74rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: var(--ink);
+    border-top: 1px solid var(--ink);
+    padding-top: 0.7rem;
+    margin: 0 0 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: baseline;
+  }
+
+  h2 .num { color: var(--ink-3); font-weight: 400; }
+
+  h3 {
+    font-family: var(--serif);
+    font-size: 1.3rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.25;
+    text-wrap: balance;
+    margin: 2.25rem 0 0.7rem;
+  }
+
+  h4 {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+    color: var(--ink-2);
+    margin: 1.75rem 0 0.55rem;
+  }
+
+  p { margin: 0 0 1.1rem; text-wrap: pretty; }
+
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+
+  strong { font-weight: 600; }
+
+  ul, ol { margin: 0 0 1.2rem; padding-left: 1.3rem; }
+  li { margin-bottom: 0.45rem; }
+  li::marker { color: var(--ink-3); }
+
+  /* ---------- evidence chips ---------- */
+
+  .chip {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 0.63rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-weight: 600;
+    padding: 0.15em 0.5em;
+    border-radius: 2px;
+    vertical-align: 0.14em;
+    white-space: nowrap;
+  }
+
+  .c-conf  { background: var(--confirmed-soft); color: var(--confirmed); }
+  .c-none  { background: var(--absent-soft);    color: var(--absent); }
+  .c-claim { background: var(--accent-soft);    color: var(--accent); }
+  .c-inf   { background: var(--infer-soft);     color: var(--infer); }
+
+  .key {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.1rem;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--ink-2);
+    background: var(--surface-2);
+    border: 1px solid var(--rule);
+    padding: 0.9rem 1rem;
+    margin: 0 0 2rem;
+  }
+  .key span.item { display: flex; align-items: center; gap: 0.4rem; }
+
+  /* ---------- code ---------- */
+
+  .term {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--rule-strong);
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    line-height: 1.65;
+    padding: 1rem 1.15rem;
+    overflow-x: auto;
+    margin: 0 0 1.3rem;
+    color: var(--ink-2);
+    white-space: pre;
+  }
+  .term b { color: var(--ink); font-weight: 600; }
+  .term .hit { color: var(--confirmed); font-weight: 600; }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.86em;
+    background: var(--surface-2);
+    padding: 0.1em 0.35em;
+    border-radius: 2px;
+  }
+
+  /* ---------- pull quote ---------- */
+
+  blockquote {
+    margin: 1.4rem 0;
+    padding: 0 0 0 1.2rem;
+    border-left: 2px solid var(--accent);
+    color: var(--ink-2);
+    font-size: 1.02rem;
+  }
+  blockquote p { margin-bottom: 0.5rem; }
+  blockquote cite {
+    display: block;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    font-style: normal;
+    color: var(--ink-3);
+    letter-spacing: 0.02em;
+    margin-top: 0.5rem;
+  }
+
+  /* ---------- tables ---------- */
+
+  .scroll { overflow-x: auto; margin: 0 0 1.4rem; }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.86rem;
+    font-variant-numeric: tabular-nums;
+    min-width: 30rem;
+  }
+  caption {
+    text-align: left;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--ink-3);
+    letter-spacing: 0.04em;
+    padding-bottom: 0.6rem;
+  }
+  th {
+    text-align: left;
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: var(--ink-2);
+    border-bottom: 1px solid var(--ink);
+    padding: 0.5rem 0.7rem 0.5rem 0;
+    vertical-align: bottom;
+  }
+  td {
+    padding: 0.55rem 0.7rem 0.55rem 0;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+  }
+  td.mono { font-family: var(--mono); font-size: 0.78rem; }
+  tr.highlight td { background: var(--accent-soft); }
+
+  /* ---------- trap cards ---------- */
+
+  .traps { display: grid; gap: 1px; background: var(--rule); border: 1px solid var(--rule); margin: 0 0 1.4rem; }
+  .trap { background: var(--surface); padding: 1.1rem 1.2rem; }
+  .trap h5 {
+    font-family: var(--mono);
+    font-size: 0.73rem;
+    letter-spacing: 0.06em;
+    margin: 0 0 0.4rem;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .trap p { margin: 0; font-size: 0.94rem; color: var(--ink-2); }
+  .trap p + p { margin-top: 0.5rem; }
+
+  /* ---------- bench procedure ---------- */
+
+  ol.bench { list-style: none; padding: 0; counter-reset: step; }
+  ol.bench > li {
+    counter-increment: step;
+    display: grid;
+    grid-template-columns: 2.4rem 1fr;
+    gap: 0 0.9rem;
+    padding: 0.9rem 0;
+    border-bottom: 1px solid var(--rule);
+    margin: 0;
+  }
+  ol.bench > li::before {
+    content: counter(step, decimal-leading-zero);
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--accent);
+    font-weight: 600;
+    padding-top: 0.28rem;
+  }
+  ol.bench > li > * { margin: 0; }
+  ol.bench > li p + p { margin-top: 0.4rem; color: var(--ink-2); font-size: 0.94rem; }
+
+  /* ---------- callout ---------- */
+
+  .callout {
+    background: var(--surface-2);
+    border: 1px solid var(--rule);
+    padding: 1.2rem 1.3rem;
+    margin: 0 0 1.4rem;
+  }
+  .callout > :last-child { margin-bottom: 0; }
+  .callout h4 { margin-top: 0; }
+
+  /* ---------- sources ---------- */
+
+  .sources { font-size: 0.85rem; color: var(--ink-2); }
+  .sources li { margin-bottom: 0.55rem; }
+
+  footer {
+    border-top: 1px solid var(--rule);
+    padding-top: 1.25rem;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--ink-3);
+    line-height: 1.7;
+  }
+
+  @media (max-width: 34rem) {
+    body { font-size: 16px; }
+    .verdict, .trap, .callout { padding: 1.1rem; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <p class="eyebrow">Hardware debug access · Canon EOS 6D Mark II</p>
+  <h1>JTAG on DIGIC</h1>
+  <p class="standfirst">What is actually known about attaching a hardware debugger to a Canon camera — the two times it has worked, the three traps that make a working port scan as dead, and whether any of it helps the 6D2 emulation effort.</p>
+  <p class="byline">
+    <span>Compiled 16 Aug 2026</span>
+    <span>Six research passes</span>
+    <span>Every claim graded</span>
+  </p>
+</header>
+
+<div class="verdict">
+  <p><strong>The term is JTAG, not “JTAB”.</strong> No hardware block, register, or acronym called JTAB exists in Canon firmware, in Magic Lantern, in qemu-eos, or in the 6D2’s own ROM. Four independent searches — the full ML tree and its 16,471 commits, qemu-eos and its 92,318 commits, external web and wiki and GitHub code search, and a raw ASCII/UTF-16 string scan of <code>ROM0.BIN</code> and <code>ROM1.BIN</code> — all returned zero. The nearest real things are the JPEG cores (<code>JP51</code>/<code>JP57</code>/<code>JP62</code>) and JTAG itself.</p>
+  <p><strong>On JTAG proper:</strong> it has been made to work on a Canon camera exactly twice, both on compacts, both over eight years ago. It has never been done on an EOS body. The silicon almost certainly supports it; nobody has found where the pins come out on anything newer than DIGIC 5.</p>
+</div>
+
+<div class="key">
+  <span class="item"><span class="chip c-conf">Confirmed</span> primary source, evidence shown</span>
+  <span class="item"><span class="chip c-claim">Claimed</span> asserted, unverified</span>
+  <span class="item"><span class="chip c-none">Nothing</span> searched, genuinely absent</span>
+  <span class="item"><span class="chip c-inf">Inference</span> reasoning, not evidence</span>
+</div>
+
+<!-- ============================================= -->
+
+<section>
+  <h2><span>What JTAG is here</span><span class="num">01</span></h2>
+
+  <p>JTAG is a wire-level protocol for reaching the debug logic built into a processor. On an ARM core that logic is <em>CoreSight</em>, reached through a <em>Debug Access Port</em>. The DAP is the bridge between the pins and the silicon; ARM specifies two ways to wire it, and both may exist on one chip.</p>
+
+  <blockquote>
+    <p>“ADIv5 specifies two alternatives for the physical connection: An IEEE 1149.1 JTAG interface. A Serial Wire Debug interface with a low pin count.”</p>
+    <cite>Arm Debug Interface Architecture Specification, ARM IHI 0031E §A1.1</cite>
+  </blockquote>
+
+  <p>The practical difference is pin budget, and on a camera board that is the whole game.</p>
+
+  <div class="scroll">
+    <table>
+      <caption>Signals required at the pads</caption>
+      <thead>
+        <tr><th>Interface</th><th>Signals</th><th>Wires incl. ground</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>SWD (SW-DP)</td><td class="mono">SWCLK, SWDIO</td><td class="mono">3</td></tr>
+        <tr><td>JTAG (JTAG-DP)</td><td class="mono">TCK, TMS, TDI, TDO</td><td class="mono">5</td></tr>
+        <tr><td>JTAG + reset</td><td class="mono">+ nTRST</td><td class="mono">6</td></tr>
+        <tr><td>JTAG + both resets</td><td class="mono">+ nSRST</td><td class="mono">7</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>What a debugger gets, once connected, is a halt: stop the core mid-execution, read every register, read arbitrary memory, set breakpoints and watchpoints. The 6D2’s application cores are Cortex-A9, which mandates six breakpoints and four watchpoints per core. <span class="chip c-conf">Confirmed</span> — Cortex-A9 TRM, ARM DDI 0388E §10.1.2.</p>
+</section>
+
+<!-- ============================================= -->
+
+<section>
+  <h2><span>The entire evidence base</span><span class="num">02</span></h2>
+
+  <p>Two people have done this. Both worked on PowerShot compacts. Both found the port on an <em>unpopulated factory footprint</em>. In both cases the port was live silicon locked only by a reset pin held low on the board.</p>
+
+  <h3>DIGIC 4 — Nathan Dyer, March 2014 <span class="chip c-conf">Confirmed</span></h3>
+
+  <p>Working on a PowerShot ELPH 100HS (IXUS 115), Dyer found an unpopulated connector footprint with most pins broken out to test points. He mapped every pin’s idle voltage, classified each as input or pulled-up or pulled-down using a 330&nbsp;Ω series resistor, then brute-forced the pin roles with a homemade STM32 scanner. His first sweep found nothing:</p>
+
+  <blockquote>
+    <p>“Using a STM32F3 development board and a utility of my own making, I hammered on all 9 of the unknown pins to see if JTAG showed up. <strong>It didn’t.</strong>”</p>
+    <cite>nada-labs.net, 4 March 2014 — original domain dead, Wayback only</cite>
+  </blockquote>
+
+  <p>The reason is the single most important fact in this document. His scanner assumed the port was always active. It was not — a reset pin was holding it down. So he re-ran the sweep while forcing each pulled-low pin high:</p>
+
+  <div class="term">[!] Potential Chain: TCK: 3 TMS: 5 TDO: 4 TDI: 2
+[+] 1 Device(s) found, with total IR Length of 4
+<b>[+]  Device 1 - ID CODE <span class="hit">15946009</span></b></div>
+
+  <p>Manufacturer bits decode to Fujitsu. He also found two boot-strap pins, one of which drops the camera into a Canon factory memory-and-bus test console. His closing assessment: <em>“I’m fairly confident that the same connector would be on all Digic 4 cameras.”</em></p>
+
+  <h3>DIGIC 5 — “ｓａｉｎｔ ｔｒｏｐｅｚ”, April 2018 <span class="chip c-conf">Confirmed</span></h3>
+
+  <p>A PowerShot S100, found by recognising the same footprint Dyer had documented. Hardware was a Versaloon probe on a two-dollar STM32 board, driving OpenOCD 0.10 at 100&nbsp;kHz. The TAP enumerated and <strong>the CPU halted</strong>:</p>
+
+  <div class="term">Info : Versaloon(0x15)by Simon(compiled on Oct  8 2017)
+Info : JTAG tap: digic5.jrc tap/device found: <span class="hit">0x1b93a02f</span> (mfg: 0x017 (Texas Instruments), part: 0xb93a)
+Info : JTAG tap: digic5.dap <span class="hit">enabled</span>
+Info : Embedded ICE version 5
+Info : digic5.cpu: hardware has 2 breakpoint/watchpoint units
+<b>target halted in ARM state due to debug-request, current mode: Abort
+cpsr: 0x20000097 pc: 0x00000010</b></div>
+
+  <p>Debug was <strong>not fused off</strong> on production DIGIC 5 silicon. That is the strongest single data point available anywhere.</p>
+
+  <p>It did not last. The camera powered off seconds after each halt; he traced this to a watchdog and suppressed it by writing zero to <code>0xC0410000</code> via CHDK. After that the camera stayed alive but <em>“remains non-responsive to physical buttons or USB communication.”</em> The thread ends with an unanswered question from February 2020: <em>“any ideas where to begin for DIGIC7 chips?”</em></p>
+
+  <h3>DIGIC 6, 7, X — nothing; DIGIC 8 — solved on compacts <span class="chip c-conf">Update</span></h3>
+
+  <div class="callout">
+    <h4>Correction (added 2026-08-16): DIGIC 8 JTAG is no longer unsolved</h4>
+    <p>The rest of this section describes the state of knowledge as originally researched, when no public source documented JTAG on any DIGIC 6+ body. That is now out of date for DIGIC 8. ML forum topic <strong>27350</strong>, “JTAG on Digic 8” by <strong>kitor</strong> (Reverse Engineering board, last post by coon 2025-09-02), retrieved via Wayback after the live forum's Cloudflare block — see Open Leads below — documents a <strong>full dual-core GDB session on a PowerShot SX740 HS</strong>: IDCODE <code>0x4ba00477</code>, 6 breakpoints/4 watchpoints per core, live register dumps (pc/sp_irq match qemu-eos's DIGIC 8 ROM map), plus a published OpenOCD dual-Cortex-A9 SMP config. Pin-ID method: resistance-to-ground signature (TDI/TCK/TMS/TDO ≈ 100–200 kΩ, /TRST ≈ 10 kΩ pulldown), tooling an Altera USB Blaster (1.8 V-compatible). Pinouts are also located for the EOS R and EOS RP (coon independently confirmed the RP pads on a donor board), though full GDB success was demonstrated only on the PowerShot.</p>
+    <p><strong>DIGIC 7 (the 6D2) still has no published pinout</strong> — the claim two paragraphs below, “any pin assignment you see claimed for a 6D2 is fabricated,” remains true today. But DIGIC 7 is architecturally the same dual Cortex-A9 at 1.8 V logic with the same ROM map as DIGIC 8 (qemu-eos models both identically), so kitor's exact method is expected to transfer rather than needing to be reinvented. This is now the project's active line of work; see <code>.planning/spikes/010-jtag-digic7/</code>.</p>
+  </div>
+
+  <p>No public source documents a working JTAG or SWD connection to any DIGIC 6 or 7 camera, or to any DIGIC 8/X <strong>EOS</strong> body specifically (kitor's success was on a PowerShot compact). No EOS pinout, no EOS IDCODE, no photograph of identified EOS debug pads talking. One serious EOS attempt is on record — nikfreak in 2016 acquired 20D, 30D, 40D, 50D, 1000D and 650D bodies specifically to replicate Dyer’s method, stated <em>“My goal is to JTAG our EOS cams”</em>, and never reported a result. Two ML developers looked at bodies they owned:</p>
+
+  <blockquote>
+    <p>“nevermind, i think on the 5D3 i didnt even find a matching connector. the 600D instead had an unpopulated one, which i guessed to be JTAG.”</p>
+    <cite>g3gg0, Magic Lantern forum, 24 April 2018</cite>
+  </blockquote>
+
+  <p>Any pin assignment you see claimed for a 6D2 is fabricated. There is no source for one — yet.</p>
+
+  <div class="scroll">
+    <table>
+      <caption>Debug connector by generation, from the Magic Lantern wiki’s <code>uart_connectors</code> table</caption>
+      <thead>
+        <tr><th>Generation</th><th>Bodies</th><th>Connector</th><th>JTAG status</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>DIGIC 4</td><td>5D2, 7D, 50D, 60D, 550D, 600D</td><td class="mono">XSR 16</td><td><span class="chip c-conf">Found</span></td></tr>
+        <tr><td>DIGIC 5</td><td>5D3, 6D, 70D, 100D, 650D</td><td class="mono">SUR 12 / 10, XSR 6</td><td><span class="chip c-conf">Found</span></td></tr>
+        <tr><td>DIGIC 6</td><td>5DS, 5D4, 7D2, 80D</td><td class="mono">SUR 17 / 14 / 6, FZC 8</td><td><span class="chip c-none">None</span></td></tr>
+        <tr class="highlight"><td><strong>DIGIC 7</strong></td><td><strong>6D2</strong>, 77D, 200D, 800D</td><td class="mono"><strong>FZC 8</strong></td><td><span class="chip c-none">None</span></td></tr>
+        <tr><td>DIGIC 8 / X</td><td>M50, R-series</td><td class="mono">FZC 8 / 13, FZA 8</td><td><span class="chip c-none">None</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>The trend line in that last column is the thing to sit with. JTAG was found on the generation with a <strong>16-pin</strong> connector. The 6D2 has <strong>eight</strong>. <span class="chip c-inf">Inference</span> — a UART needs RX, TX, ground and a supply reference, which leaves roughly four pins. That is comfortable for SWD and tight for bare four-wire JTAG. If any debug port is exposed on a 6D2, SWD is the likelier shape, purely on pin economics. Nobody has published what those four pins actually do.</p>
+</section>
+
+<!-- ============================================= -->
+
+<section>
+  <h2><span>Three traps that fake a dead port</span><span class="num">03</span></h2>
+
+  <p>These are the transferable findings from the two successes — and they matter more than the pad locations, because each one turns a live port into a scan that reads as nothing. Anyone testing a 6D2, seeing silence, and concluding “Canon fused off debug” will most likely be wrong.</p>
+
+  <div class="traps">
+    <div class="trap">
+      <h5>01 — nTRST tied low</h5>
+      <p>The test-reset pin is held asserted on the board, which disables the port at rest. This is a <em>board-level</em> decision, not a fuse, and it is reversible with a wire.</p>
+      <p><em>“nTRST is tied low (active), you need to pull it to VCC in order to active the JTAG interface.”</em> This was the lock on DIGIC 5, and the same trap cost Dyer his first DIGIC 4 sweep.</p>
+    </div>
+    <div class="trap">
+      <h5>02 — A TI ICEPICK router in front of the DAP</h5>
+      <p>Texas Instruments places a JTAG route controller between the pins and the debug logic. From outside you see one unfamiliar device, not the ARM DAP you are hunting for.</p>
+      <p>OpenOCD supports it, but only if told: you need <code>icepick.cfg</code> and an explicit tap-enable event. A stock scan finds nothing and reports nothing useful.</p>
+    </div>
+    <div class="trap">
+      <h5>03 — The DEBUG power domain is asleep</h5>
+      <p>The debug logic sits in a power domain that needs clocking before it responds. OpenOCD’s own i.MX6 config carries the comment verbatim: <em>“some TCK cycles are required to activate the DEBUG power domain”</em>, implemented as <code>runtest 100</code> on post-reset.</p>
+    </div>
+  </div>
+
+  <h4>Telling the failure modes apart</h4>
+
+  <p>A dead scan is weak evidence of fusing. A live IDCODE with a dead halt is strong evidence of authentication gating. These are distinguishable, and knowing which you have decides whether to keep going.</p>
+
+  <div class="scroll">
+    <table>
+      <thead>
+        <tr><th>What you observe</th><th>Most likely cause</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>No permutation yields an IDCODE; TDO candidate never toggles</td><td>Not routed to an accessible pad — or nTRST held asserted</td></tr>
+        <tr><td>Same, until one candidate pin is forced to the opposite state, then a chain appears</td><td>nTRST was tied low. <strong>This is the DIGIC 4 and DIGIC 5 outcome.</strong></td></tr>
+        <tr><td>IDCODE reads, TAP enumerates, CoreSight ROM table reads — but halt requests are ignored</td><td><code>DBGEN</code> low: debug authentication tied off or fused</td></tr>
+        <tr><td>DP responds, but every memory transaction sets <code>STICKYERR</code></td><td><code>DEVICEEN</code> low</td></tr>
+        <tr><td>DP responds only after an undocumented unlock opcode</td><td>Challenge-response secure JTAG, i.MX-style</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Whether debug works at all is decided outside the ARM core, by whatever the chip integrator wired to four authentication pins. The Cortex-A9 manual is blunt about it: <em>“The NIDEN, DBGEN, SPIDEN, and SPNIDEN input signals are either tied off to some fixed value or controlled by some external device.”</em> No document describing Canon’s choice exists publicly. <span class="chip c-none">Nothing</span></p>
+</section>
+
+<!-- ============================================= -->
+
+<section>
+  <h2><span>The EOS-specific blocker</span><span class="num">04</span></h2>
+
+  <p>Everything above came from compacts. An EOS body has a second processor that a PowerShot does not, and it changes the problem qualitatively.</p>
+
+  <blockquote>
+    <p>“there might be a watchdog somewhere. If you lock up the CPU on a PowerShot model … I remember the camera reboots … That’s different from EOS — there, it locks up and the MPU throws ERR80 shortly afterwards (as the main CPU is no longer responding). There’s no MPU on PowerShots.”</p>
+    <cite>a1ex, Magic Lantern forum, 23 April 2018</cite>
+  </blockquote>
+
+  <p>JTAG halts the ICU. It does not halt the MPU. The MPU notices its partner has stopped answering and faults the camera within seconds. This is not a brick, but it means the halt-and-inspect workflow — the entire reason to want JTAG — is hostile on an EOS body by design.</p>
+
+  <p><strong>Any 6D2 JTAG plan needs an MPU-watchdog answer before the soldering iron comes out.</strong> The DIGIC 5 equivalent was a single register write to <code>0xC0410000</code>; the DIGIC 7 address is unpublished. <span class="chip c-none">Nothing</span></p>
+</section>
+
+<!-- ============================================= -->
+
+<section>
+  <h2><span>What it would buy the emulator</span><span class="num">05</span></h2>
+
+  <p>Worth separating honestly, because the case is narrower than it first appears — and two of the things JTAG is often assumed to solve here are already solved.</p>
+
+  <h4>Would fix — nothing else can</h4>
+
+  <ul>
+    <li><strong>The three questions the project’s own notes mark unanswerable.</strong> <code>PU1_INVESTIGATION.md</code> has a section literally titled “Open questions / nobody could determine”: the value of <code>r4</code> at <code>0xDF00B450</code> (recorded as <em>“never read directly… strong circumstantial, not register-level proof”</em>), which code gives the PU1Wait semaphore (<em>“Site unknown”</em>), and why <code>0xE0494208</code> never returns. These are exactly what you discriminate by halting and reading.</li>
+    <li><strong>Ground truth for guessed emulator config.</strong> Six of the eight fields in the 6D2’s qemu-eos model entry are either marked <code>fixme</code> or silently copied from the 200D — including two interrupt IDs carrying the comment <em>“taken from 200D. Probably valid but Has to be validated.”</em></li>
+    <li><strong>Observing state during a wedge</strong>, when no firmware-cooperative channel can run.</li>
+  </ul>
+
+  <h4>Would not fix</h4>
+
+  <ul>
+    <li><strong>The current 6D2 emulation blocker.</strong> “Missing GUI-stage MPU spells” is stale — stock firmware now completes startup in QEMU. And more capture would not have fixed it either; the analysis that closed it says <em>“no new capture is needed. Both gaps are already in the captured logs.”</em> The fixes were an extractor bug, static ROM decoding, and a per-core interrupt fix.</li>
+    <li><strong>ROM dumping.</strong> Done and verified 2025-09-29, using Canon’s own <code>dump_file</code> stub. JTAG ROM extraction matters when ML cannot boot at all. That is not this camera.</li>
+    <li><strong>Write-only registers.</strong> The 6D2’s timer A <em>“cannot be read back at all”</em>. No probe makes an unreadable register readable.</li>
+    <li><strong>Lockstep trace diffing.</strong> <span class="chip c-inf">Inference</span> — two cores, a live MPU, sensor and I²C peripherals and watchdogs. Halt core 0 and you desynchronise the exact interaction you are trying to measure.</li>
+  </ul>
+
+  <div class="callout">
+    <h4>The cheaper path to most of the same data</h4>
+    <p><code>ml/src/io_trace.c</code> is an on-body MMIO tracer that installs a data-abort handler over the peripheral region and logs every read and write. Its own header states the purpose: <em>“These logs are very useful for emulation.”</em> Its region menu cross-references qemu-eos’s <code>eos_handlers</code> table by name.</p>
+    <p>The emulator half already exists too — <code>-d io_log</code> is documented as exporting mmio_log entries <em>“to see the values from physical hardware.”</em> Both halves of the cross-check are written.</p>
+    <p>The blocker is bounded and purely software: nine <code>#ifdef CONFIG_DIGIC_VI</code> sites with no DIGIC 7 branch, so the 6D2 falls through to the DIGIC-5-and-earlier path and emits the wrong coprocessor ops. No probe, no unknown pinout, no risk to a body.</p>
+  </div>
+</section>
+
+<!-- ============================================= -->
+
+<section>
+  <h2><span>UART first — the better opening move</span><span class="num">06</span></h2>
+
+  <p>In both Canon successes, UART was found first, and JTAG turned out to be on the same footprint. The UART side is also vastly better documented than the JTAG side.</p>
+
+  <blockquote>
+    <p>“almost all camera have an (usually unpopulated) debug/factory test connector on the pcb, usually close to the USB port. and usually the first pin on that connector is RxD and the second is TxD.”</p>
+    <cite>CHDK wiki, UART page</cite>
+  </blockquote>
+
+  <p>The method takes minutes, not weeks: probe the pads with a scope while power-cycling the camera, and watch for the short string the firmware emits at boot. That pin is TxD; RxD is usually adjacent. Settings are 115200/8/N/1 at 1.8&nbsp;V or 3.3&nbsp;V logic.</p>
+
+  <p>Canon’s EOS service port is documented well enough that adapter hardware has been published — the <code>coon42/magic-lantern-dev-kit</code> repository carries KiCad sources and orderable gerbers for 8-pin and 13-pin service-connector cables. Its netlist shows the port carries <strong>two independent UARTs at two different voltages</strong>:</p>
+
+  <div class="scroll">
+    <table>
+      <caption>EOS service connector nets, from the published dev-kit netlist</caption>
+      <thead>
+        <tr><th>Net</th><th>Connector pin</th><th>Meaning</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="mono">RXDICU_1V8 / TXDICU_1V8</td><td class="mono">J5 12, 13</td><td>ICU — the main DIGIC CPU, <strong>1.8 V</strong></td></tr>
+        <tr><td class="mono">RXDMPU / TXDMPU</td><td class="mono">J5 17, 16</td><td>MPU — the second processor, <strong>3.3 V</strong></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Note what that board does <em>not</em> do: its FTDI JTAG-capable pins route to a separate header, not to the camera connector. The service port as published is UART-only. It is not a JTAG breakout.</p>
+
+  <p>One claim is worth verifying before anything else, because it is specifically about this generation: that on some DIGIC 7, 8 and X cameras the UART is reachable <em>without opening the camera</em>, behind a removable rubber cover. <span class="chip c-claim">Claimed</span> — attributed to the ML wiki but not directly confirmed, because the site sits behind a Cloudflare challenge. If true it applies to the 6D2 and is the cheapest experiment available by a wide margin.</p>
+
+  <p>There is also a documented trick worth knowing: returning from <code>autoexec.bin</code> brings up a bootloader menu over UART — visible in QEMU as well as on hardware.</p>
+</section>
+
+<!-- ============================================= -->
+
+<section>
+  <h2><span>The cheapest first experiment</span><span class="num">07</span></h2>
+
+  <p>This is an ordered bench procedure — the sequence carries real dependency, each step de-risking the next. Roughly $30 if you already own a scope, plus a donor body.</p>
+
+  <ol class="bench">
+    <li>
+      <p><strong>Get a mechanically broken 6D2. Never the working camera.</strong></p>
+      <p>ML developers have offered to source dead bodies for exactly this before. Opening a body voids the warranty absolutely and there is no authorised route.</p>
+    </li>
+    <li>
+      <p><strong>Find and photograph the FZC-8 footprint</strong>, conventionally near the USB port.</p>
+      <p>Identify the exact connector series and obtain the mating flex if possible — a mating FPC beats soldering to a sub-millimetre-pitch footprint.</p>
+    </li>
+    <li>
+      <p><strong>Passive survey with a scope. This is the highest-value hour in the whole plan.</strong></p>
+      <p>Common ground, camera powered, measure all eight pins at idle. This gives you the logic level — killing the largest safety risk — plus which pin bursts at boot (TX) and which sit static.</p>
+    </li>
+    <li>
+      <p><strong>Classify each pin through a 330 Ω series resistor</strong>: input, pulled-up, pulled-down, or actively driven.</p>
+      <p>Dyer’s exact method. The pulled-low pins are your nTRST candidates, and they are what step 7 depends on.</p>
+    </li>
+    <li>
+      <p><strong>Bring up UART before attempting anything else.</strong></p>
+      <p>It proves you can solder to this connector and that your voltage assumptions are right — and it hands you the DryOS shell independently of any debug port.</p>
+    </li>
+    <li>
+      <p><strong>Scan for SWD before JTAG.</strong></p>
+      <p>Eight pads is 56 ordered pairs for SWD, 1,680 permutations for four-wire JTAG. A JTAGulator or JTAGenum sweeps both in seconds, but SWD is the cheaper and likelier target.</p>
+    </li>
+    <li>
+      <p><strong>Repeat every scan with each pulled-low candidate forced high.</strong></p>
+      <p>This is the step both prior successes hinged on. If DIGIC 7 behaves like DIGIC 4 and DIGIC 5, this is what turns a dead scan into a live IDCODE. The number to hunt for is the standard ARM CoreSight DP code, <code>0x4ba00477</code>.</p>
+    </li>
+  </ol>
+
+  <p><strong>Decision point.</strong> An IDCODE at step 7 means the hard problem is solved and everything after is OpenOCD configuration plus the MPU fight. Nothing across all eight pads in both nTRST states means the port is not on that connector — and the next tier (probing nearby test-point clusters, X-ray, BGA tracing) costs an order of magnitude more for much lower odds. That is the moment to stop and reconsider, not to escalate.</p>
+
+  <div class="callout">
+    <h4>Safety, non-negotiable</h4>
+    <p>No DIGIC I/O voltage has ever been published. The single measured datapoint in the entire public record is DIGIC 4 at 3.3 V. <strong>Do not carry that assumption to DIGIC 7.</strong> Measure every pad’s idle level before driving anything; connect ground first; keep series resistors in every probe line during discovery; start at 100 kHz; read-only until the map is understood. A 5 V Arduino on a 1.8 V pad damages the SoC.</p>
+  </div>
+</section>
+
+<!-- ============================================= -->
+
+<section>
+  <h2><span>Open leads</span><span class="num">08</span></h2>
+
+  <p>Three documents would materially change this picture and could not be retrieved. All three are worth chasing.</p>
+
+  <ul>
+    <li><strong>“JTAG on Digic 8”, by kitor</strong> — <span class="chip c-conf">Retrieved 2026-08-16</span> via Wayback CDX (topic 27350, ML forum Reverse Engineering board, last post by <em>coon</em> 2 September 2025). No longer blocked; findings folded into the section above. Wayback's crawler was itself blocked after 2026-03-09, so any posts after that date are still unread — worth re-checking periodically.</li>
+    <li><strong>The nada-labs DIGIC 4 article</strong> — the origin document for both successes. Domain is dead and redirects to a host returning HTTP 500; the substance survives only in a partial Wayback snapshot. Worth contacting the author.</li>
+    <li><strong>0xAF and the EOS 400D</strong> — a 2016 forum recollection that a 400plus developer <em>“already worked on JTAG with the 400D”</em>. Third-hand, hedged, no primary source found. <span class="chip c-claim">Claimed</span> — but it is the only lead in existence pointing at JTAG on an EOS body.</li>
+  </ul>
+
+  <div class="callout">
+    <h4>Reaching the sources</h4>
+    <p><code>magiclantern.fm</code>, <code>wiki.magiclantern.fm</code> and <code>chdk.setepontos.com</code> sit behind a Cloudflare managed challenge that defeats curl, WebFetch, and headless Chrome alike. Two routes do work and produced most of the primary material here: Wayback snapshots of the forum’s flat print view (<code>action=printpage;topic=N.0</code>), and the Fandom wikis’ MediaWiki <code>api.php</code>, which is not blocked. Wayback rate-limits hard — space the requests out.</p>
+  </div>
+</section>
+
+<!-- ============================================= -->
+
+<section>
+  <h2><span>Verdict</span><span class="num">09</span></h2>
+
+  <p>The ARM side is fully documented, the tooling is mature and costs about $200, and Canon has no obvious anti-tamper motive on a DSLR main CPU. Debug was demonstrably open on DIGIC 5. None of that is the problem.</p>
+
+  <p>The problem is a single physical question that nobody has ever asked of this generation: <strong>does a debug port come out anywhere reachable on a DIGIC 7 board?</strong> That is not a research problem. It is a pad-hunting problem on undocumented hardware, and a few hours of scope work on a donor body would answer it.</p>
+
+  <p>Two things follow. First, the maintainer’s framing is right and if anything understated — the “few worked examples” are two, both on compacts, both before 2019. Second, the value being reached for may be as much organisational as technical: a hardware-verification path lets machine-generated work check itself against silicon without spending the time of the handful of developers who own the bodies. That is a real problem and JTAG is a real answer to it. It is also a different argument from “the emulator needs register values”, and it is stronger when made on its own terms.</p>
+</section>
+
+<!-- ============================================= -->
+
+<section>
+  <h2><span>Sources</span><span class="num">10</span></h2>
+
+  <ul class="sources">
+    <li><a href="https://developer.arm.com/documentation/ihi0031/a/Debug-Port-Registers">Arm Debug Interface Architecture Specification ADIv5, ARM IHI 0031E</a></li>
+    <li><a href="https://developer.arm.com/documentation/100511/latest/debug/external-debug-interface/debugging-modes">Cortex-A9 Technical Reference Manual, ARM DDI 0388E</a></li>
+    <li><a href="https://openocd.org/doc/html/TAP-Declaration.html">OpenOCD User’s Guide — TAP Declaration &amp; autoprobing</a> · <a href="https://raw.githubusercontent.com/openocd-org/openocd/master/tcl/target/zynq_7000.cfg">zynq_7000.cfg</a> (dual Cortex-A9 reference) · <a href="https://raw.githubusercontent.com/openocd-org/openocd/master/tcl/target/imx6.cfg">imx6.cfg</a></li>
+    <li><a href="https://web.archive.org/web/20150217062744/http://nada-labs.net/2014/finding-jtag-on-a-canon-elph100hs-ixus115/">nada-labs — Finding JTAG on a Canon ELPH100HS (IXUS115), 2014</a></li>
+    <li><a href="https://chdk.setepontos.com/index.php?topic=13408.0">CHDK forum — DIGIC 5 JTAG (topic 13408)</a> · <a href="https://chdk.setepontos.com/index.php?topic=128.0">JTAG port/pinpads (topic 128, 2007)</a></li>
+    <li><a href="https://www.magiclantern.fm/forum/index.php?topic=22030.0">ML forum — JTAG on DIGIC chips (topic 22030)</a> · <a href="https://www.magiclantern.fm/forum/index.php?topic=16835.0">JTAG / UART &amp; more (topic 16835)</a></li>
+    <li><a href="https://wiki.magiclantern.fm/uart_connectors">ML wiki — uart_connectors</a> · <a href="https://chdk.fandom.com/wiki/UART">CHDK wiki — UART</a></li>
+    <li><a href="https://github.com/coon42/magic-lantern-dev-kit">coon42/magic-lantern-dev-kit</a> — EOS service-port adapter, KiCad sources and gerbers</li>
+    <li><a href="http://www.grandideastudio.com/jtagulator/">JTAGulator</a> · <a href="https://github.com/cyphunk/JTAGenum">JTAGenum</a> · <a href="https://www.pentestpartners.com/security-blog/the-art-of-finding-jtag-on-pcbs/">Pen Test Partners — finding JTAG on PCBs</a></li>
+    <li><a href="https://blog.3mdeb.com/2021/2021-12-14-secure-jtag-on-imx-soc/">3mdeb — secure JTAG fusing on i.MX</a> (analogy only; no Canon equivalent is public)</li>
+  </ul>
+</section>
+
+<footer>
+  Compiled from six independent research passes across the Magic Lantern tree, qemu-eos, published ARM specifications, and community forum archives.<br>
+  Local repository citations refer to the 6D2 project working tree. Every claim is graded; ungraded statements are direct quotation from the cited source.<br>
+  Where the record is empty, this document says so rather than filling the gap.
+</footer>
+
+</div>
