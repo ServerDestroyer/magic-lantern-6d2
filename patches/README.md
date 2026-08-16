@@ -226,7 +226,7 @@ Session 4 evidence (`evidence/photo-session-2-18h25.md`) showed edits (2) and
 console (`CONSOLE_H`, src/console.c:19), and `No memory suites.` spam buried
 everything else. Hence rev 2.
 
-### rev 2 (session 5, current)
+### rev 2 (session 5, superseded)
 
 Keeps rev 1's edits (1), (2) and the `#if 0`'d (4) unchanged; replaces (3)
 and adds the real fix for spike-006 bug 3.
@@ -260,6 +260,47 @@ Built 2026-08-15 18:50 local, `ML_MODULES="raw_video/mlv_lite file_man bench
 dual_iso"`, `-Werror` clean. Strings verified in the **staged** `build/zip`
 artifacts. md5: `zip/autoexec.bin` `54eb1339b8812bebcd9d2a2472309d7c`,
 `zip/ML/modules/mlv_lite.mo` `ca38b52a268c37d94e3a899d88f6f554`.
+
+### rev 3 (session 5, current) — the camera logs its own diagnostics
+
+Keeps every rev-2 edit; only the three diagnostic call sites change, so the
+owner no longer has to photograph the console before it self-flushes.
+
+- **src/exmem.c:211-235** and **mlv_lite.c:391-415** — a `static void
+  diag_log(const char *fmt, ...)` helper, duplicated verbatim in both files.
+  It `vsnprintf`s into a 128-byte stack buffer, `printf("%s", buf)`s it (so
+  console behaviour is byte-identical to rev 2), then appends a `[%d.%03d]`
+  seconds.millis stamp (trailing space) plus the line to
+  `ML/LOGS/RAWDIAG.LOG` via `FIO_CreateFileOrAppend` /
+  `FIO_WriteFile` / `FIO_CloseFile`, opening and closing per call so a crash
+  never loses earlier lines. Duplication is deliberate: exporting one helper
+  from the core to modules would need `.sym` plumbing for 12 lines.
+  `vsnprintf`, `snprintf`, `strlen`, `printf`, `get_ms_clock`,
+  `FIO_CreateFileOrAppend`, `FIO_WriteFile` and `FIO_CloseFile` are all
+  already in `build/magiclantern.sym`, so the module link needs nothing new.
+- **exmem.c:283**, **mlv_lite.c:1610**, **mlv_lite.c:2107** — the `[probe] max
+  …`, `No memory suites. lv=…` and `raw inactive: lv=…` lines now call
+  `diag_log` instead of `printf`.
+- Context safety: all three sites run in task context (shoot task via
+  `shoot_malloc_autodetect`, `raw_rec_polling_cbr` for the other two), never in
+  an ISR, so FIO is legal there — noted in the helper comment in both files.
+  Volume is low by construction: one line per autodetect, at most one per
+  second in the dead state, one per mode exit.
+
+**No `features.h` change.** `FEATURE_SCREENSHOT` is already defined upstream at
+`platform/6D2.111/features.h:5` and `screenshot.o` is in `platform/Makefile:373`
+— the screenshot feature was never off on this body. The build confirms it:
+`Screenshot - 10s` and `Screenshot after 10 seconds => VRAMx.BMP.` are both in
+the staged `autoexec.bin`. `features.h` is therefore *not* part of this patch;
+its only local edits belong to 0001 and 0005.
+
+Built 2026-08-15 19:17 local, same `ML_MODULES` set, `-Werror` clean. Strings
+verified in the **staged** `build/zip` artifacts: `autoexec.bin` carries
+`[probe] max %dMB steps %d slowest %dms@%dMB last %s` and `ML/LOGS/RAWDIAG.LOG`;
+`mlv_lite.mo` carries `ML/LOGS/RAWDIAG.LOG`, `raw inactive: lv=%d movie=%d
+gui=%d` and `No memory suites. lv=%d movie=%d gui=%d rawact=%d rec=%d
+suites=%d/%d`. md5: `zip/autoexec.bin` `8dd0cd24f24ca93a2616dddf6fe471bb`,
+`zip/ML/modules/mlv_lite.mo` `737bec86ca1ff088c305a06836a0eb5e`.
 
 **Build-system trap (worse than previously recorded).** `make clean` in
 `platform/6D2.111` does NOT rebuild modules, and clearing only
