@@ -184,3 +184,12 @@ First photo-free session — `tools/RAWDIAG-session1.txt` captured everything:
   test 1 — expect the second REC to just work (suites realloc within a polling
   tick). Remaining hazard: REC while suites are momentarily 0/0 still hangs —
   a refuse-to-start guard is the defensive fix if re-arm proves insufficient.
+
+## RAWDIAG SESSION 2 (2026-08-15 ~19:45, rev 4): RE-ARM FIX WORKS
+
+`tools/RAWDIAG-session2.txt`: zero dead-state lines (vs 7 s of spam in
+session 1); re-arm probe fired at t=12.1 s, ~1 s after the take auto-stopped;
+clean power-off at 17 s, no freeze. `footage/M15-1945.MLV` 57f @ 59.95
+finalized. Only one MLV on card — whether a second REC press was made is
+unconfirmed; auto-heal proven either way. The re-arm fix (rev 4) is
+hardware-validated and upstream-candidate together with the measured-fps stamp.
