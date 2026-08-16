@@ -1,0 +1,23 @@
+diff --git a/hw/eos/eos.c b/hw/eos/eos.c
+index c2039fdd18..a6e72656d6 100644
+--- a/hw/eos/eos.c
++++ b/hw/eos/eos.c
+@@ -2880,6 +2880,18 @@ unsigned int eos_handle_intengine_gic(unsigned int parm, unsigned int address, u
+                                 cpu_reset_interrupt(CPU(eos_state->cpu0), CPU_INTERRUPT_HARD);
+                             else
+                                 cpu_reset_interrupt(CPU(eos_state->cpu1), CPU_INTERRUPT_HARD);
++
++                            /* A device interrupt may still be pending on this same
++                             * CPU_INTERRUPT_HARD line (irq_id set, reason register
++                             * not yet read).  The SGI ack above must not drop it,
++                             * or irq_id stays latched and every later interrupt is
++                             * refused (dual-core boot wedge, spike 004). */
++                            if (eos_state->irq_id)
++                            {
++                                cpu_interrupt(CPU(current_cpu->cpu_index == 0 ?
++                                                  eos_state->cpu0 : eos_state->cpu1),
++                                              CPU_INTERRUPT_HARD);
++                            }
+                         }
+                         ret = iar;
+                     }

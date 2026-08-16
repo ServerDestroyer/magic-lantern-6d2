@@ -511,3 +511,18 @@ set by the interrupt bug above, not by missing spells and not by ML.
 Evidence added this session: `evidence/2026-08-15-night-stockint.txt` (the
 `-d int` run), `evidence/2026-08-15-night-runs.txt` (the 5-run summary table and
 register samples).
+
+## GIC fix applied + partial result (2026-08-15 night, main session)
+
+Applied the minimal re-assert from the agent's sketch (`patches/0008-qemu-eos-
+gic-pending-irq-fix.patch`, in GICC_IAR read: re-raise CPU_INTERRUPT_HARD when
+`irq_id` still latched). Measured effect: the permanent interrupt refusal is
+GONE — `-d int` now shows `trigger int 0x28` (hptimer) flowing continuously
+after the SGI handshake, where the pre-fix trace had 60 consecutive refusals
+and zero deliveries. Boot still stalls at the same `DbgMgr [PM] Enable` point
+(473 stderr lines) — but with live interrupts, the remaining stall is most
+plausibly the missing GUI-stage MPU dialogue (no 6D2 button codes, one unknown
+reply `08 06 01 a7 00 01`), not the GIC. Next lever: capture a LONGER body
+startup log (bigger CONFIG_STARTUP_LOG buffer or later dump) to harvest the
+GUI-stage spells, and/or make_button_codes for the 6D2. The agent's structural
+follow-ups (per-CPU iar/irq_id or adopting intc/arm_gic.c) remain open.
