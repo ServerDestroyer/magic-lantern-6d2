@@ -1,0 +1,499 @@
+00000000 - 3FFFFFFF: eos.ram
+40000000 - 7FFFFFFF: eos.ram_uncached
+DF000000 - DFFFFFFF: eos.ram_extra_0
+82100000 - 821FFFFF: eos.ram_extra_1
+E0000000 - E1FFFFFF: eos.rom0
+E2000000 - E3FFFFFF: eos.rom0_mirror
+E4000000 - E5FFFFFF: eos.rom0_mirror
+E6000000 - E7FFFFFF: eos.rom0_mirror
+E8000000 - E9FFFFFF: eos.rom0_mirror
+EA000000 - EBFFFFFF: eos.rom0_mirror
+EC000000 - EDFFFFFF: eos.rom0_mirror
+EE000000 - EFFFFFFF: eos.rom0_mirror
+F0000000 - F0FFFFFF: eos.rom1
+F1000000 - F1FFFFFF: eos.rom1_mirror
+F2000000 - F2FFFFFF: eos.rom1_mirror
+F3000000 - F3FFFFFF: eos.rom1_mirror
+F4000000 - F4FFFFFF: eos.rom1_mirror
+F5000000 - F5FFFFFF: eos.rom1_mirror
+F6000000 - F6FFFFFF: eos.rom1_mirror
+F7000000 - F7FFFFFF: eos.rom1_mirror
+F8000000 - F8FFFFFF: eos.rom1_mirror
+F9000000 - F9FFFFFF: eos.rom1_mirror
+FA000000 - FAFFFFFF: eos.rom1_mirror
+FB000000 - FBFFFFFF: eos.rom1_mirror
+FC000000 - FCFFFFFF: eos.rom1_mirror
+FD000000 - FDFFFFFF: eos.rom1_mirror
+FE000000 - FEFFFFFF: eos.rom1_mirror
+FF000000 - FFFFFFFF: eos.rom1_mirror
+BFE00000 - DEFFFFFF: eos.mmio
+[EOS] enabling code execution logging.
+[EOS] loading '/home/chris/ml6d2/roms/6D2/ROM0.BIN' to 0xE0000000-0xE1FFFFFF
+[EOS] loading '/home/chris/ml6d2/roms/6D2/ROM1.BIN' to 0xF0000000-0xF0FFFFFF
+[MPU] warning: non-empty spell #20 (PROP 80030058) has duplicate(s): #21 
+[MPU] warning: non-empty spell #22 (PROP_CARD2_STATUS) has duplicate(s): #75 
+[MPU] warning: non-empty spell #36 (06 05 03 69) has duplicate(s): #55 
+[MPU] warning: non-empty spell #39 (PROP_LV_DISPSIZE) has duplicate(s): #49 
+[MPU] warning: non-empty spell #69 (PROP_TFT_STATUS) has duplicate(s): #16 #60 #98 
+[MPU] FIXME: no MPU button codes for 6D2.
+Start address: 0xE0000000
+Setting BOOTDISK flag at E1FF8004 to 0
+[CPU0] E0007648: MRC p15,0,Rd,cr0,cr0,5: MPIDR_EL1_S -> 0x80000000
+[CPU1] E0007648: MRC p15,0,Rd,cr0,cr0,5: MPIDR_EL1_S -> 0x80000001
+[CPU0] E000766E: MCR p15,0,Rd,cr12,cr0,0:     VBAR_S <- 0xE000001D 
+[CPU1] E0007690: MCR p15, ...          : CACHEMAINT / CACHEMAINT_S x1 (omitted)
+[CPU1] E000766E: MCR p15,0,Rd,cr12,cr0,0:     VBAR_S <- 0xE000001D 
+[CPU0] E000769A: MRC p15,0,Rd,cr1,cr0,0:    SCTLR_S -> 0x8C50078
+[CPU0] E0007690: MCR p15, ...          : CACHEMAINT / CACHEMAINT_S x1 (omitted)
+[CPU0] E000769A: MCR p15,0,Rd,cr1,cr0,0:    SCTLR_S <- 0x48C50878 
+[CPU1] E000769A: MRC p15,0,Rd,cr1,cr0,0:    SCTLR_S -> 0x8C50078
+[CPU1] E000769A: MCR p15,0,Rd,cr1,cr0,0:    SCTLR_S <- 0x48C50878 
+[CPU1] [CPU0] E0004ADA: MRC p15,0,Rd,cr1,cr0,0:    SCTLR_S -> 0x48C50878
+[CPU1] E0004ADA: MCR p15, ...          : CACHEMAINT / CACHEMAINT_S x3 (omitted)
+[CPU1] E0004ADA: MCR p15,0,Rd,cr1,cr0,0:    SCTLR_S <- 0x48C51878 
+E0004ADA: MRC p15,0,Rd,cr1,cr0,0:    SCTLR_S -> 0x48C50878
+[CPU0] E0004ADA: MCR p15, ...          : CACHEMAINT / CACHEMAINT_S x1 (omitted)
+[CPU0] E0004ADA: MCR p15,0,Rd,cr1,cr0,0:    SCTLR_S <- 0x48C51878 
+[CPU1] E0004AFE: MRC p15,0,Rd,cr1,cr0,0:    SCTLR_S -> 0x48C51878
+[CPU1] E0004BC8: MCR p15, ...          : CACHEMAINT / CACHEMAINT_S x569 (omitted)
+[CPU1] E0004AFE: MCR p15,0,Rd,cr1,cr0,0:    SCTLR_S <- 0x48C50878 
+[CPU1] E0004B0E: MCR p15, ...          : CACHEMAINT / CACHEMAINT_S x1 (omitted)
+[CPU1] E0004A5A: MCR p15,0,Rd,cr3,cr0,0:     DACR_S <- 0x55555555 
+[CPU1] E0004A62: MCR p15,0,Rd,cr2,cr0,0: TTBR0_EL1_S <- 0xE0004880 
+[CPU1] E0004A66: MCR p15,0,Rd,cr2,cr0,1: TTBR1_EL1_S <- 0xE0000080 
+[CPU1] E0004A6A: MCR p15,0,Rd,cr13,cr0,1: CONTEXTIDR_S <- 0x1        
+[CPU1] E0004A6E: MCR p15,0,Rd,cr2,cr0,2:    TTBCR_S <- 0x7        
+[CPU1] E0004A76: MCR p15,0,Rd,cr8,cr7,0:  TLBIALL_S <- 0x0        
+[CPU1] E0004A7E: MRC p15,0,Rd,cr1,cr0,0:    SCTLR_S -> 0x48C50878
+[CPU1] E0004A7E: MCR p15,0,Rd,cr1,cr0,0:    SCTLR_S <- 0x48C50879 
+[CPU1] E000771C: MRC p15,0,Rd,cr1,cr0,0:    SCTLR_S -> 0x48C50879
+[CPU1] E000771C: MCR p15, ...          : CACHEMAINT / CACHEMAINT_S x1 (omitted)
+[CPU1] E000771C: MCR p15,0,Rd,cr1,cr0,0:    SCTLR_S <- 0x48C51879 
+[CPU1] E0007734: MRC p15,0,Rd,cr1,cr0,0:    SCTLR_S -> 0x48C51879
+[CPU1] E0007734: MCR p15,0,Rd,cr1,cr0,0:    SCTLR_S <- 0x48C5187D 
+[CPU1] E0007740: MRC p15,0,Rd,cr1,cr0,1: ACTLR_EL1_S -> 0x45
+[CPU1] E0007740: MCR p15,0,Rd,cr1,cr0,1: ACTLR_EL1_S <- 0x45       
+[CPU1] E0007740: MRC p15,0,Rd,cr15,cr0,0: A9_PWRCTL_S -> 0x0
+[CPU1] E0007740: MCR p15,0,Rd,cr15,cr0,0: A9_PWRCTL_S <- 0x1        
+[CPU1] E0007760: MRC p15,0,Rd,cr15,cr0,1:  A9_DIAG_S -> 0x0
+[CPU1] E0007760: MCR p15,0,Rd,cr15,cr0,1:  A9_DIAG_S <- 0x400000   
+[CPU1] E0004A1A: MRC p15,0,Rd,cr1,cr0,0:    SCTLR_S -> 0x48C5187D
+[CPU1] E0004A1A: MCR p15,0,Rd,cr1,cr0,0:    SCTLR_S <- 0x48C5107D 
+[CPU0] E00076DA: MRC p15,0,Rd,cr0,cr0,5: MPIDR_EL1_S -> 0x80000000
+[CPU0] E0004AFE: MRC p15,0,Rd,cr1,cr0,0:    SCTLR_S -> 0x48C51878
+[CPU0] E0004AFE: MCR p15,0,Rd,cr1,cr0,0:    SCTLR_S <- 0x48C50878 
+[CPU0] E0004B0A: MCR p15, ...          : CACHEMAINT / CACHEMAINT_S x1 (omitted)
+[CPU0] E0004A5A: MCR p15,0,Rd,cr3,cr0,0:     DACR_S <- 0x55555555 
+[CPU0] E0004A62: MCR p15,0,Rd,cr2,cr0,0: TTBR0_EL1_S <- 0xE0004800 
+[CPU0] E0004A66: MCR p15,0,Rd,cr2,cr0,1: TTBR1_EL1_S <- 0xE0000080 
+[CPU0] E0004A6A: MCR p15,0,Rd,cr13,cr0,1: CONTEXTIDR_S <- 0x0        
+[CPU0] E0004A6E: MCR p15,0,Rd,cr2,cr0,2:    TTBCR_S <- 0x7        
+[CPU0] E0004A76: MCR p15,0,Rd,cr8,cr7,0:  TLBIALL_S <- 0x0        
+[CPU0] E0004A7E: MRC p15,0,Rd,cr1,cr0,0:    SCTLR_S -> 0x48C50878
+[CPU0] E0004A7E: MCR p15,0,Rd,cr1,cr0,0:    SCTLR_S <- 0x48C50879 
+[CPU0] E000771C: MRC p15,0,Rd,cr1,cr0,0:    SCTLR_S -> 0x48C50879
+[CPU0] E000771C: MCR p15, ...          : CACHEMAINT / CACHEMAINT_S x1 (omitted)
+[CPU0] E000771C: MCR p15,0,Rd,cr1,cr0,0:    SCTLR_S <- 0x48C51879 
+[CPU0] E0007730: MRC p15,0,Rd,cr1,cr0,0:    SCTLR_S -> 0x48C51879
+[CPU0] E0007730: MCR p15,0,Rd,cr1,cr0,0:    SCTLR_S <- 0x48C5187D 
+[CPU0] E0007740: MRC p15,0,Rd,cr1,cr0,1: ACTLR_EL1_S -> 0x45
+[CPU0] E0007740: MCR p15,0,Rd,cr1,cr0,1: ACTLR_EL1_S <- 0x45       
+[CPU0] E0007740: MRC p15,0,Rd,cr15,cr0,0: A9_PWRCTL_S -> 0x0
+[CPU0] E0007740: MCR p15,0,Rd,cr15,cr0,0: A9_PWRCTL_S <- 0x1        
+[CPU0] E0007760: MRC p15,0,Rd,cr15,cr0,1:  A9_DIAG_S -> 0x0
+[CPU0] E0007760: MCR p15,0,Rd,cr15,cr0,1:  A9_DIAG_S <- 0x400000   
+[CPU0] E0004900: MRC p15,0,Rd,cr0,cr0,5: MPIDR_EL1_S -> 0x80000000
+[CPU0] E0004940: MCR p15,0,Rd,cr12,cr0,0:     VBAR_S <- 0xDF000000 
+AArch32 mode switch from svc to irq PC 0xe000494c
+AArch32 mode switch from irq to svc PC 0xe0004950
+[CPU0] 00100752: MCR p15,0,Rd,cr7,cr8,0:      ATS_S <- 0xC6000000 
+[CPU0] 0010075A: MRC p15,0,Rd,cr7,cr4,0:      PAR_S -> 0xB
+[CPU0] 00100752: MCR p15,0,Rd,cr7,cr8,0:      ATS_S <- 0xC2000000 
+[CPU0] 00100756: MRC p15,0,Rd,cr7,cr4,0:      PAR_S -> 0xB
+[CPU0] E0040000: MCR p15,0,Rd,cr12,cr0,0:     VBAR_S <- 0xE026A9E0 
+[CPU0] E004000A: MRC p15,0,Rd,cr0,cr0,5: MPIDR_EL1_S -> 0x80000000
+[CPU0] E00400FC: MRC p15,0,Rd,cr0,cr0,5: MPIDR_EL1_S -> 0x80000000
+[EOS] trigger int 0x16D (delayed!)
+[CPU0] E06B0878: MCR p15, ...          : CACHEMAINT / CACHEMAINT_S x8845 (omitted)
+[CPU0] E04DCB1E: MCR p15,0,Rd,cr7,cr8,0:      ATS_S <- 0xC6000000 
+[CPU0] E04DCB26: MRC p15,0,Rd,cr7,cr4,0:      PAR_S -> 0xB
+[CPU0] E04DCB1E: MCR p15,0,Rd,cr7,cr8,0:      ATS_S <- 0xC2000000 
+[CPU0] E04DCB22: MRC p15,0,Rd,cr7,cr4,0:      PAR_S -> 0xB
+[EOS] trigger int 0x1B (delayed!)
+[EOS] trigger int 0x16D (delayed)
+E026B40C: Taking exception 5 [IRQ]
+...from EL3 to EL3
+...with ESR 0x0/0x0
+AArch32 mode switch from irq to svc PC 0xe026aa70
+[EOS] trigger int 0x1B (delayed)
+DF0076E2: Taking exception 5 [IRQ]
+...from EL3 to EL3
+...with ESR 0x0/0x0
+AArch32 mode switch from irq to svc PC 0xe026aa70
+[EOS] trigger int 0x1B (delayed)
+DF007A8C: Taking exception 5 [IRQ]
+...from EL3 to EL3
+...with ESR 0x0/0x0
+AArch32 mode switch from irq to svc PC 0xe026aa70
+[CPU0] [[1;36m        init:e04e292f [0m] (00:05) [MEM] InitializePermanentMemory 0 4636784
+[EOS] trigger int 0x1B (delayed)
+E0570C44: Taking exception 5 [IRQ]
+...from EL3 to EL3
+...with ESR 0x0/0x0
+AArch32 mode switch from irq to svc PC 0xe026aa70
+[CPU0] [[1;36m        init:e01e55fd [0m] (00:01) [HPC] InitializeHPCopy( 0 )
+[CPU0] [[1;36m        init:e01e55fd [0m] (00:01) [HPC] InitializeHPCopy( 1 )
+[CPU0] [[1;36m        init:e05ead8f [0m] (00:01) [PM] Disable (ID = 137, cnt = 1/1)
+[CPU0] [[1;36m        init:e004139b [0m] (89:16) 
+                                        K406 ICU Firmware Version 1.1.1 ( 6.4.9 )
+[CPU0] [[1;36m        init:e00413a7 [0m] (89:05) 
+                                        ICU Release DateTime 2020.11.09 19:30:37
+[CPU0] [[1;36m        init:e04ea389 [0m] (02:01) PROPAD_Initialize CreateBinarySemaphore = 0x4e003a
+[CPU0] [[1;36m        init:e04ea439 [0m] (02:01) PROPAD_RegisterOmarSysBlockCBR 0xe0040719 0xe00406df
+[CPU0] [[1;36m        init:e0162bcf [0m] (02:01) PROPTUNEAD_RegisterOmarSysBlockCBR 0xe0040719 0xe00406df
+[CPU0] [[1;36m        init:e0049137 [0m] (00:03) [SEQ] CreateSequencer (Startup, Num = 6)
+[CPU0] [[1;36m        init:e00491fb [0m] (00:02) [SEQ] NotifyComplete (Startup, Flag = 0x10000)
+[CPU0] [[1;36m        init:e0049231 [0m] (00:03) [SEQ] NotifyComplete (Cur = 0, 0x2018000, Flag = 0x10000)
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1dc0000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1dc0004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1dc2000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1dc2004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1dc4000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1dc4004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1dc6000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1dc6004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1dc8000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1dc8004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1dca000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1dca004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1dcc000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1dcc004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1dce000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1dce004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1dd0000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1dd0004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1dd2000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1dd2004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1dd4000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1dd4004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1dd6000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1dd6004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1dd8000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1dd8004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1dda000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1dda004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1ddc000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1ddc004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1dde000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1dde004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1de0000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1de0004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1de2000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1de2004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1de4000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1de4004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1de6000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1de6004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1de8000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1de8004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1dea000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1dea004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1dec000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1dec004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1dee000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1dee004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1df0000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1df0004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1df2000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1df2004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1df4000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1df4004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1df6000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1df6004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1df8000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1df8004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1dfa000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1dfa004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1dfc000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1dfc004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1dfe000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1dfe004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204f40 0xe1df4004 0x4
+[CPU0] [[1;36m     RomRead:e01e567d [0m] (00:01) [HPC] HPCopy() use ch0 !
+[XDMAC0] Copy [0xE1DF4000] -> [0x407BA520], length [0x000015F8], flags [0x00000005]
+[XDMAC0] OK
+[EOS] trigger int 0x11E
+E00EF814: Taking exception 5 [IRQ]
+...from EL3 to EL3
+...with ESR 0x0/0x0
+AArch32 mode switch from irq to svc PC 0xe026aa70
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1df6000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1df6004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e00000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e00004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e02000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e02004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e04000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e04004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e06000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e06004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e08000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e08004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e0a000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e0a004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e0c000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e0c004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e0e000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e0e004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e10000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e10004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e12000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e12004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e14000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e14004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e16000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e16004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e18000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e18004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e1a000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e1a004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e1c000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e1c004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e1e000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e1e004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e20000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e20004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e22000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e22004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e24000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e24004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e26000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e26004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e28000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e28004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e2a000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e2a004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e2c000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e2c004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e2e000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e2e004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e30000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e30004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e32000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e32004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e34000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e34004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e36000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e36004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e38000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e38004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e3a000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e3a004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e3c000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e3c004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e3e000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e3e004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204f40 0xe1e00004 0x4
+[CPU0] [[1;36m     RomRead:e01e567d [0m] (00:01) [HPC] HPCopy() use ch0 !
+[XDMAC0] Copy [0xE1E00000] -> [0x407BC5C0], length [0x00000D44], flags [0x00000005]
+[XDMAC0] OK
+[EOS] trigger int 0x11E
+E00EF814: Taking exception 5 [IRQ]
+...from EL3 to EL3
+...with ESR 0x0/0x0
+AArch32 mode switch from irq to svc PC 0xe026aa70
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e02000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e02004 0x4
+[CPU0] [[1;36m     RomRead:e04ea973 [0m] (02:05) PROPAD_CreateFROMPropertyHandle DRAMAddr 0x415a7000
+[EOS] trigger int 0x1B (delayed)
+E04DCA60: Taking exception 5 [IRQ]
+...from EL3 to EL3
+...with ESR 0x0/0x0
+AArch32 mode switch from irq to svc PC 0xe026aa70
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ec8 0xe1980000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ecc 0xe1980004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204f28 0xe1980004 0x4
+[CPU0] [[1;36m     RomRead:e01e567d [0m] (00:01) [HPC] HPCopy() use ch0 !
+[XDMAC0] Copy [0xE1980000] -> [0x415A7000], length [0x0015C684], flags [0x00000005]
+[XDMAC0] OK
+[EOS] trigger int 0x11E (delayed!)
+[CPU0] [[1;36m      SFRead:e0162d95 [0m] (02:05) PROPTUNEAD_CreateFROMPropertyHandleToDRAM Addr:0x41287000
+[EOS] trigger int 0x1B (delayed)
+E01F6AC4: Taking exception 5 [IRQ]
+...from EL3 to EL3
+...with ESR 0x0/0x0
+AArch32 mode switch from irq to svc PC 0xe026aa70
+[EOS] trigger int 0x11E (delayed)
+E028F83C: Taking exception 5 [IRQ]
+...from EL3 to EL3
+...with ESR 0x0/0x0
+AArch32 mode switch from irq to svc PC 0xe026aa70
+[CPU0] [[1;36m      SFRead:e01f6c63 [0m] (02:03) PROPCOMBO_LoadProperty(395)
+[EOS] trigger int 0x1B (delayed)
+E028F85C: Taking exception 5 [IRQ]
+...from EL3 to EL3
+...with ESR 0x0/0x0
+AArch32 mode switch from irq to svc PC 0xe026aa70
+[CPU0] [[1;36m      SFRead:e01e567d [0m] (00:01) [HPC] HPCopy() use ch1 !
+[XDMAC1] Copy [0xF0890000] -> [0x41287000], length [0x001CB304], flags [0x00000005]
+[XDMAC1] OK
+[EOS] trigger int 0x12E (delayed!)
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ec8 0xe1980000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ecc 0xe1980004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e40000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e40004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e80000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e80004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1ec0000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1ec0004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204f40 0xe1e40004 0x4
+[CPU0] [[1;36m     RomRead:e01e567d [0m] (00:01) [HPC] HPCopy() use ch0 !
+[XDMAC0] Copy [0xE1E40000] -> [0x407BE760], length [0x0001DA54], flags [0x00000005]
+[XDMAC0] OK
+[EOS] trigger int 0x11E (delayed!)
+[CPU0] [[1;36m      DbgMgr:e05ead8f [0m] (00:01) [PM] Disable (ID = 10, cnt = 1/2)
+[CPU0] [[1;36m      DbgMgr:e05eae1b [0m] (00:01) [PM] Enable (ID = 10, cnt = 0/1)
+[EOS] trigger int 0x11E (delayed)
+E04DCA82: Taking exception 5 [IRQ]
+...from EL3 to EL3
+...with ESR 0x0/0x0
+AArch32 mode switch from irq to svc PC 0xe026aa70
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1e80000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1e80004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1f00000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1f00004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204f40 0xe1f00004 0x4
+[CPU0] [[1;36m     RomRead:e01e567d [0m] (00:01) [HPC] HPCopy() use ch0 !
+[XDMAC0] Copy [0xE1F00000] -> [0x407FE800], length [0x0000D79C], flags [0x00000005]
+[XDMAC0] OK
+[EOS] trigger int 0x11E (delayed!)
+[EOS] trigger int 0x11E (delayed)
+E04DCA82: Taking exception 5 [IRQ]
+...from EL3 to EL3
+...with ESR 0x0/0x0
+AArch32 mode switch from irq to svc PC 0xe026aa70
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee0 0xe1f00000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ee4 0xe1f00004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204e98 0xe1f20000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204e9c 0xe1f20004 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204ef8 0xe1f20004 0x4
+[CPU0] [[1;36m     RomRead:e01e567d [0m] (00:01) [HPC] HPCopy() use ch0 !
+[XDMAC0] Copy [0xE1F20000] -> [0x4081E8A0], length [0x0001DCA8], flags [0x00000005]
+[XDMAC0] OK
+[EOS] trigger int 0x11E (delayed!)
+[EOS] trigger int 0x1B (delayed)
+E04DCA82: Taking exception 5 [IRQ]
+...from EL3 to EL3
+...with ESR 0x0/0x0
+AArch32 mode switch from irq to svc PC 0xe026aa70
+[EOS] trigger int 0x11E (delayed)
+E04DCA82: Taking exception 5 [IRQ]
+...from EL3 to EL3
+...with ESR 0x0/0x0
+AArch32 mode switch from irq to svc PC 0xe026aa70
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204e98 0xe1f20000 0x4
+[CPU0] [[1;36m     RomRead:e04eb4a5 [0m] (02:01) ReadUncacheFromData 0x204e9c 0xe1f20004 0x4
+[CPU0] [[1;36m     RomRead:e00491fb [0m] (00:02) [SEQ] NotifyComplete (Startup, Flag = 0x2000000)
+[CPU0] [[1;36m     RomRead:e0049231 [0m] (00:03) [SEQ] NotifyComplete (Cur = 0, 0x2008000, Flag = 0x2000000)
+[EOS] trigger int 0x1B (delayed)
+E04DCA82: Taking exception 5 [IRQ]
+...from EL3 to EL3
+...with ESR 0x0/0x0
+AArch32 mode switch from irq to svc PC 0xe026aa70
+[EOS] trigger int 0x1B (delayed)
+E04DCA82: Taking exception 5 [IRQ]
+...from EL3 to EL3
+...with ESR 0x0/0x0
+AArch32 mode switch from irq to svc PC 0xe026aa70
+[EOS] trigger int 0x1B (delayed)
+E04DCA82: Taking exception 5 [IRQ]
+...from EL3 to EL3
+...with ESR 0x0/0x0
+AArch32 mode switch from irq to svc PC 0xe026aa70
+[EOS] trigger int 0x12E (delayed)
+E04DCA82: Taking exception 5 [IRQ]
+...from EL3 to EL3
+...with ESR 0x0/0x0
+AArch32 mode switch from irq to svc PC 0xe026aa70
+[CPU0] [[1;36m      SFRead:e00491fb [0m] (00:02) [SEQ] NotifyComplete (Startup, Flag = 0x8000)
+[CPU0] [[1;36m      SFRead:e0049231 [0m] (00:03) [SEQ] NotifyComplete (Cur = 0, 0x8000, Flag = 0x8000)
+[CPU0] [[1;36m     Startup:e00490cd [0m] (00:05) [SEQ] seqEventDispatch (Startup, 0)
+[CPU0] [[1;36m     Startup:e0041503 [0m] (89:05) startupEntry
+[EOS] trigger int 0x1B (delayed)
+0xe00d9c61: cpu 0 sending SGI 0xa
+E00D9C60: Taking exception 5 [IRQ]
+...from EL3 to EL3
+...with ESR 0x0/0x0
+AArch32 mode switch from irq to svc PC 0xe026aa70
+0xe026aaa5: cpu 0 ack SGI 0x0, iar: 0xa
+0xe0004d37: cpu 1 ack SGI 0x0, iar: 0xa
+[CPU1] E0004A30: MRC p15,0,Rd,cr1,cr0,0:    SCTLR_S -> 0x48C5107D
+[CPU1] E0004A30: MCR p15, ...          : CACHEMAINT / CACHEMAINT_S x18589 (omitted)
+[CPU1] E0004A30: MCR p15,0,Rd,cr1,cr0,0:    SCTLR_S <- 0x48C5187D 
+[CPU1] E0004900: MRC p15,0,Rd,cr0,cr0,5: MPIDR_EL1_S -> 0x80000001
+[CPU1] E0040000: MCR p15,0,Rd,cr12,cr0,0:     VBAR_S <- 0xE026A9E0 
+[CPU1] E0040006: MRC p15,0,Rd,cr0,cr0,5: MPIDR_EL1_S -> 0x80000001
+[CPU1] E0040034: MRC p15,0,Rd,cr0,cr0,5: MPIDR_EL1_S -> 0x80000001
+[CPU0] [[1;36m     Startup:e0046dc1 [0m] (b4:03) [PWM] PWM_Initialize
+[CPU0] [[1;36m     Startup:e00dd163 [0m] (b4:03) [ADC] InitializePollingADC
+[EOS] trigger int 0x28 (delayed!)
+[CPU1] [[1;36m    PowerMgr:e07ecd61 [0m] (e0:03) GlobalVectorInit
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)
+[EOS] trigger int 0x28 (delayed!)

@@ -360,3 +360,154 @@ Scratch artifacts: the probe logs are preserved permanently in `evidence/`
 `old-bin/` with the exact spike-004 binary) is scheduled for deletion in the
 2026-08-15 evening housekeeping pass — the analysis above and `evidence/`
 are the durable record.
+
+---
+
+## 2026-08-15 (night) — re-run with real MPU spells: ML fully exonerated, the wedge is qemu-eos's global interrupt latch
+
+Re-ran the boot now that `qemu-eos/hw/eos/mpu_spells/6D2.h` exists (27 856 bytes,
+2026-08-15 18:48) and `qemu-system-arm` was rebuilt against it (same timestamp).
+Binary under test: `platform/6D2.111/build/autoexec.bin`, 244 256 bytes,
+md5 `8cf3bfa93848ba37b82c0ff16677f43f` (the rev-4 diagnostic build, 19:39).
+Card rebuilt with the same mtools recipe as above; the bootloader confirms it:
+`File size : 0x3BA20` = 244 256, `Now jump to AUTOEXEC.BIN(0x00800000)!!`.
+Nothing in `ml/` or `qemu-eos/` was modified; all scratch lives outside both trees.
+
+### 1. The stall is identical with and without ML — 5/5 runs, deterministic
+
+Sampling both cores' registers over the qemu monitor every 5 s for 60 s:
+
+| run | bootflag | log lines | task debugmsgs | CPU0 PC/PSR | CPU1 PC/PSR | last debugmsg |
+|---|---|---|---|---|---|---|
+| stock1 | boot=0 | 468 | 292 | `E02C6100`/`600000F3` | `E00D97E0`/`40000073` | `DbgMgr:e05eae1b [PM] Enable (ID = 10, cnt = 0/1)` |
+| stock2 | boot=0 | 462 | 291 | same | same | same |
+| ml1 | boot=1 | 495 | 295 | same | same | same |
+| ml2 | boot=1 | 508 | 294 | same | same | same |
+| ml3 | boot=1 | 497 | 295 | same | same | same |
+
+Byte-identical stall state in every run. A `difflib` alignment of the stock1 and
+ml1 debugmsg streams shows the only ML-attributable differences are ML's own
+three messages (`replacing task_dispatch_hook` at `0x00101A31`, the version and
+build-stamp lines at `0x00101A8D`/`0x00101A9B`), ML's relocation MMU/cache work
+at `0x0083B3xx`/`0x000E7Axx`, and PM-counter interleaving noise. **ML gets three
+messages further than stock, not less.** The `GlobalVectorInit` "stall point"
+from the original session is reached in both cases and passed in both cases —
+the boot now runs on through PropMgr, `ChangeAEMode`, the battery-report spells
+and `nfcmgrstate_Initialize:ce_init` before wedging.
+
+So the question this spike could not previously separate is settled by the
+control: with `boot=0` there is no ML in the machine at all, and the machine
+wedges in exactly the same place. **ML is not the cause.**
+
+### 2. Where both cores actually are — symbolized
+
+Both PCs are ROM, and both are one instruction past a `WFI`:
+
+| core | PC | actually is |
+|---|---|---|
+| CPU0 | `0xE02C6100` | insn after the `WFI` at `0xE02C60FE`, inside the PowerMgr idle loop `0xE02C608E–0xE02C6106`. Identified by the two `DebugMsg` string literals it references: `0xE02C61D0` = `"[PM] pmSelfRefresh : In"`, `0xE02C61E8` = `"[PM] pmSelfRefresh : Out"`, and the task-name literal `"PowerMgr"` at `0xE02C6208`. PSR `600000F3` = svc, Thumb, I=1 F=1. |
+| CPU1 | `0xE00D97E0` | `b.n 0xE00D97DE`, and `0xE00D97DE` is `WFI` (`bf30`) — a two-instruction `wfi; b .-2` park loop in the DryOS multicore support block that also contains `dcache_clean_multicore` (`0xE00D9CCC`, named in `platform/6D2.111/stubs.S:37`). PSR `40000073` = svc, Thumb, I=0 F=1. |
+
+Both cores are halted waiting for an interrupt. Nothing in ML is executing; the
+"spin PCs" of the original session (`0x001037A8` / `0x0010390C`, already refuted
+as logger overhead) do not appear at all.
+
+### 3. What they are waiting for — an interrupt that qemu-eos will never deliver again
+
+Re-ran stock with `-d debugmsg,int,verbose`
+(`evidence/2026-08-15-night-stockint.txt`). The interrupt timeline splits cleanly
+in two at log line 438:
+
+| window | interrupts delivered | interrupts refused |
+|---|---|---|
+| lines 0–437 | `0x1B` ×11, `0x11E` ×6, `0x12E` ×1, `0x16D` ×1 | 7 |
+| lines 438–499 (60 s wall clock) | **0** | `0x28` ×60 |
+
+`0x28` is `hptimer_interrupt` (`model_list.c:594` for the 6D2's DIGIC 7 entry).
+After line 438 **not one interrupt of any id is ever delivered again** — the
+machine's entire interrupt system is dead, which is exactly why both cores sit in
+`WFI` forever.
+
+The last three events before the death, in order, are the cross-core handshake:
+
+    line 422  0xe00d9c61: cpu 0 sending SGI 0xa      <- inside the dcache_clean_multicore block
+    line 427  0xe026aaa5: cpu 0 ack SGI 0x0, iar: 0xa
+    line 428  0xe0004d37: cpu 1 ack SGI 0x0, iar: 0xa
+
+Both cores read `GICC_IAR` and **both were handed the same `iar` value 0xa** —
+the single global latch — and the code path each read takes clears
+`CPU_INTERRUPT_HARD`.
+
+### 4. Root cause (qemu-eos, `hw/eos/eos.c`) — confirmed, high confidence
+
+Three single-CPU assumptions in a two-CPU machine compound:
+
+1. `eos_state->irq_id` is one global latch. `eos_trigger_int` (line 2436) refuses
+   to deliver *anything* while it is non-zero:
+   `if(!delay && irq_enabled[id] && !eos_state->irq_id)`.
+2. `irq_id` is cleared only when the guest reads the interrupt-reason register
+   (`0xD4011000`, line 2741) — and that same read does
+   `cpu_reset_interrupt(CPU(CURRENT_CPU), CPU_INTERRUPT_HARD)` (line 2742).
+3. The GIC SGI path shares that very flag and also has a single global `iar`
+   (`static int iar = 0x20;`, line 2825). A `GICC_IAR` read clears
+   `CPU_INTERRUPT_HARD` on the reading core (lines 2878–2882).
+
+Delivery targets `CPU(CURRENT_CPU)` (lines 2443 and 1004) — whichever vCPU
+happened to be executing when the device fired, not the core that owns the
+interrupt (`CURRENT_CPU` is `eos_state->cpus[current_cpu ? current_cpu->cpu_index : 0]`,
+`eos.h:60`).
+
+Failure sequence, matching the measured trace line for line: a device interrupt
+is latched into the global `irq_id` and `CPU_INTERRUPT_HARD` is raised on some
+core; before that core takes it, the `dcache_clean_multicore` SGI 0xa handshake
+runs and that core reads `GICC_IAR`, whose handler clears `CPU_INTERRUPT_HARD`.
+The device interrupt is now invisible to the core, so the reason register is
+never read, so `irq_id` is never cleared — and condition (1) refuses every
+subsequent interrupt for the rest of the run. Both cores idle into `WFI` and the
+emulated camera is dead. This is the same defect class the evening session
+predicted from code reading; the `-d int` trace is the direct measurement.
+
+### 5. Sketched fix (NOT applied — `qemu-eos/` is shared)
+
+Smallest change that should clear this wedge, in `eos_handle_intengine_gic`,
+`GICC_IAR` read case (eos.c:2873–2883): after clearing `CPU_INTERRUPT_HARD` for
+the SGI ack, re-assert it on that same core when a device interrupt is still
+latched —
+
+    if (eos_state->irq_id) {
+        cpu_interrupt(CPU(current_cpu->cpu_index ? eos_state->cpu1
+                                                 : eos_state->cpu0),
+                      CPU_INTERRUPT_HARD);
+    }
+
+That restores the dropped wake without touching the interrupt model's structure.
+The structural fixes behind it, in increasing cost: make `iar` per-CPU
+(`static int iar[2]`, indexed by `current_cpu->cpu_index`, cleared per-CPU in
+`GICC_EOIR`); make `irq_id` per-CPU and deliver to the owning core instead of
+`CURRENT_CPU`; or replace the hand-rolled GIC with QEMU's `intc/arm_gic.c`, as
+the FIXME at eos.c:2813 already says.
+
+Verification is now cheap: the wedge is 5/5 deterministic, so a fixed build
+either passes `nfcmgrstate_Initialize:ce_init` or it does not.
+
+### 6. Side observation on the boot ceiling
+
+The archived pre-spells qemu log `tools/6D2-startup-qemu.txt` has 1 339 messages
+and reaches `startupCompleteCallback` and the `EstimatedSize` assert. Today's
+runs stop at ~292 messages. This is **not** a like-for-like regression: with real
+spells the guest receives real property values and takes a different code path
+(`ChangeAEMode`, `propst_ChangeAEMode`, `ReqChangeCBR`, the NFC/CE bring-up)
+that the pre-spells run never entered. What is fair to say is that the current
+tree's 6D2 boot ceiling is `nfcmgrstate_Initialize:ce_init`, and that ceiling is
+set by the interrupt bug above, not by missing spells and not by ML.
+
+**Reproduce**
+
+    # card: mtools recipe from section 2 above, using the current magiclantern.zip
+    # harness: QemuRunner, model 6D2, d_args=["debugmsg"] (add "int","verbose" for
+    #   the interrupt timeline), boot=True/False, monitor "info registers -a"
+    #   sampled every 5 s.  Note: the monitor socket path must be < 108 bytes.
+
+Evidence added this session: `evidence/2026-08-15-night-stockint.txt` (the
+`-d int` run), `evidence/2026-08-15-night-runs.txt` (the 5-run summary table and
+register samples).
