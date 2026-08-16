@@ -193,3 +193,16 @@ clean power-off at 17 s, no freeze. `footage/M15-1945.MLV` 57f @ 59.95
 finalized. Only one MLV on card — whether a second REC press was made is
 unconfirmed; auto-heal proven either way. The re-arm fix (rev 4) is
 hardware-validated and upstream-candidate together with the measured-fps stamp.
+
+## WBAL investigation (2026-08-15 late, desk): block is structurally fine — the gap is AWB opacity
+
+Parsed WBAL from M15-1945/M15-1924: mode=0 (auto), kelvin=5200 (stale default),
+gains R=485 G=1024 B=610 identical across files. G=exactly 1024 (=1.0) says the
+PROP_CUSTOM_WB offset parse (lens.c:1736, gains[16]/[18]/[19]) is probably
+CORRECT — these are the camera's unused custom-WB slot values, recorded while
+wb_mode=auto. So nothing is "corrupt"; the real deficiency is that in AWB the
+file carries no record of the WB Canon actually applied. Discriminator (30 s
+body test, queued): set custom WB to a known value + record → if gains track,
+parse is right and the fix is stamping effective AWB (if any property exposes
+it) or documenting "use WB picker in post" as the answer. Until then MLV App
+recipe: WB picker, black 2048.
