@@ -34,7 +34,10 @@ Established constraints — non-negotiable for any spike or build.
 | 002 | stub-verification | standard | Given `platform/6D2.111/stubs.S`, when each address is checked against the dumped ROM, then every stub resolves to a plausible function entry rather than a wrong or guessed address | **PARTIAL** ⚠ | rom, stubs, reversing |
 | 003 | cheap-wins-scoping | standard | Given the MOV time limit and focus-box/clean-HDMI asks, when the responsible code paths are traced in ML and the 6D2 ROM, then each has a concrete implementation route and effort estimate | **PARTIAL** ⚠ | features, scoping, upstream |
 | 004 | ml-boot-in-qemu | standard | Given our built `autoexec.bin`, when loaded in qemu-eos alongside the 6D2 ROMs, then ML's own init runs and its stage of failure is identified | **VALIDATED** ✓ | qemu, ml-build, boot |
-| 005 | mpu-spell-capture | standard | Given a startup-log ML build, when its `DEBUGMSG.LOG` is fed to `extract_init_spells.py`, then a valid `mpu_spells/6D2.h` is produced — the artifact 001 says qemu-eos is missing | **PARTIAL** ⚠ | qemu, mpu, logging, upstream, body-test |
+| 005 | mpu-spell-capture | standard | Given a startup-log ML build, when its `DEBUGMSG.LOG` is fed to `extract_init_spells.py`, then a valid `mpu_spells/6D2.h` is produced — the artifact 001 says qemu-eos is missing | **VALIDATED** ✓ | qemu, mpu, logging, upstream, body-test |
+| 006 | rawvideo-memory | standard | Given the first raw recordings on the body, when each defect (garbage fps header, dead state freeze, pool shrink) is instrumented and retested, then each is root-caused and fixed or downgraded | **VALIDATED** ✓ | raw-video, body-test, mlv |
+| 007 | dual-iso-scoping | scoping | Given the dual_iso module and our ROM dump, when per-model requirements and D7 prior art are mapped, then the port difficulty and first action are known | **VALIDATED** ✓ | dual-iso, rom, scoping |
+| 008 | lossless-compression-scoping | scoping | Given mlv_lite's lossless path and the 6D2 ROM, when the encoder subsystem and per-body needs are mapped, then feasibility, viable modes, and effort are known | **VALIDATED** ✓ | compression, rom, scoping |
 
 ### Verdict summary
 
