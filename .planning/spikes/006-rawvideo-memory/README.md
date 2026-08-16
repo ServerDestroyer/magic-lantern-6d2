@@ -152,3 +152,13 @@ LV — console redraw corruption during buffer setup, cosmetic but note it.
 Session ran the REV 1 build (card sync to rev 2 hadn't happened yet), so fps
 headers are still garbage (21567/22481) and probe/dead-state instrumentation
 was the old kind. Retest under Session 4b (rev 2) still pending.
+
+## FPS HEADER FIX HARDWARE-VALIDATED (2026-08-15 ~19:25, rev-2 build)
+
+Session ran rev 2 (rev-3 sync hadn't happened). Three takes, headers now stamp
+measured fps exactly: `footage/M15-1921.MLV` 169f @ 29.970, `M15-1924.MLV`
+393f @ **25.000** (the PAL test — done correctly), `M15-1925.MLV` 173f @
+29.970. Bug 1 (garbage sourceFps) is FIXED and validated on hardware.
+Tests 1/2/4 console data lost (display-only build, no photos) — rerun on
+rev 3, which self-records to ML/LOGS/RAWDIAG.LOG. Card now carries rev 3
+(autoexec 8dd0cd24).
