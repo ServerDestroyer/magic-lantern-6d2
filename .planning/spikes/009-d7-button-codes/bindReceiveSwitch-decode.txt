@@ -1,0 +1,114 @@
+id 0x00 -> 0xE00DAA5E  always                   gui=0x06  BGMT_MENU
+id 0x01 -> 0xE00DAA62  ?,b==1                   gui=0x07  BGMT_INFO
+id 0x01 -> 0xE00DAA62  ?,b!=1                   gui=0x64  
+id 0x01 -> 0xE00DAA62  ?,?,b==1                 gui=0x07  BGMT_INFO
+id 0x01 -> 0xE00DAA62  ?,?,b!=1                 gui=0x64  
+id 0x01 -> 0xE00DAA62  ?,?                      gui=--    
+id 0x01 -> 0xE00DAA62  ?                        gui=--    
+id 0x01 -> 0xE00DAA62  always                   gui=--    
+id 0x02 -> 0xE00DAAD0  always                   gui=0x0A  
+id 0x03 -> 0xE00DAA9C  b==1                     gui=0x0B  BGMT_PLAY
+id 0x03 -> 0xE00DAA9C  b!=1                     gui=0x0C  
+id 0x04 -> 0xE00DAAAE  b==0                     gui=--    
+id 0x04 -> 0xE00DAAAE  b!=0                     gui=0x0D  BGMT_TRASH
+id 0x05 -> 0xE00DAAD4  b==1                     gui=0x14  
+id 0x05 -> 0xE00DAAD4  b!=1                     gui=0x15  
+id 0x06 -> 0xE00DAAEA  b==1                     gui=0x16  
+id 0x06 -> 0xE00DAAEA  b!=1                     gui=0x17  
+id 0x07 -> 0xE00DAB0E  always                   gui=--    
+id 0x08 -> 0xE00DAB10  b==1                     gui=0x12  BGMT_PRESS_ZOOM_IN
+id 0x08 -> 0xE00DAB10  b!=1                     gui=0x13  BGMT_UNPRESS_ZOOM_IN
+id 0x09 -> 0xE00DAAF6  b==1                     gui=0x0E  
+id 0x09 -> 0xE00DAAF6  b!=1                     gui=0x0F  
+id 0x0A -> 0xE00DAB02  b==1                     gui=0x10  
+id 0x0A -> 0xE00DAB02  b!=1                     gui=0x11  
+id 0x0B -> 0xE00DAB28  b>=10,?                  gui=--    
+id 0x0B -> 0xE00DAB28  b>=10                    gui=--    
+id 0x0B -> 0xE00DAB28  b<10,b=0                 gui=0x2E  BGMT_UNPRESS_UDLR
+id 0x0B -> 0xE00DAB28  b<10,b=1,?               gui=--    
+id 0x0B -> 0xE00DAB28  b<10,b=1                 gui=--    
+id 0x0B -> 0xE00DAB28  b<10,b=2                 gui=0x2F  BGMT_PRESS_UP
+id 0x0B -> 0xE00DAB28  b<10,b=3                 gui=0x30  BGMT_PRESS_UP_RIGHT
+id 0x0B -> 0xE00DAB28  b<10,b=4                 gui=0x31  BGMT_PRESS_UP_LEFT
+id 0x0B -> 0xE00DAB28  b<10,b=5                 gui=0x32  BGMT_PRESS_RIGHT
+id 0x0B -> 0xE00DAB28  b<10,b=6                 gui=0x33  BGMT_PRESS_LEFT
+id 0x0B -> 0xE00DAB28  b<10,b=7                 gui=0x34  BGMT_PRESS_DOWN_RIGHT
+id 0x0B -> 0xE00DAB28  b<10,b=8                 gui=0x35  BGMT_PRESS_DOWN_LEFT
+id 0x0B -> 0xE00DAB28  b<10,b=9                 gui=0x36  BGMT_PRESS_DOWN
+id 0x0C -> 0xE00DAB1C  b==1                     gui=0x04  BGMT_PRESS_SET
+id 0x0C -> 0xE00DAB1C  b!=1                     gui=0x05  BGMT_UNPRESS_SET
+id 0x0D -> 0xE00DAB94  b>=0                     gui=0x03  BGMT_WHEEL_RIGHT
+id 0x0D -> 0xE00DAB94  b<0                      gui=0x02  BGMT_WHEEL_LEFT
+id 0x0E -> 0xE00DABBC  b>=0                     gui=0x01  BGMT_WHEEL_DOWN
+id 0x0E -> 0xE00DABBC  b<0                      gui=0x00  BGMT_WHEEL_UP
+id 0x0F -> 0xE00DAB0E  always                   gui=--    
+id 0x10 -> 0xE00DAB0E  always                   gui=--    
+id 0x11 -> 0xE00DAC12  ?                        gui=0x54  
+id 0x11 -> 0xE00DAC12  always                   gui=0x55  GMT_GUICMD_LOCK_ON
+id 0x12 -> 0xE00DAC10  b==1                     gui=0x56  GMT_GUICMD_OPEN_SLOT_COVER
+id 0x12 -> 0xE00DAC10  b!=1                     gui=0x57  GMT_GUICMD_CLOSE_SLOT_COVER
+id 0x13 -> 0xE00DAC0E  b!=1                     gui=--    
+id 0x13 -> 0xE00DAC0E  b==1                     gui=--    
+id 0x14 -> 0xE00DAB0E  always                   gui=--    
+id 0x15 -> 0xE00DAC0C  b!=1                     gui=--    
+id 0x15 -> 0xE00DAC0C  b==1                     gui=0x65  
+id 0x16 -> 0xE00DAAC0  b==0                     gui=--    
+id 0x16 -> 0xE00DAAC0  b!=0,?                   gui=--    
+id 0x16 -> 0xE00DAAC0  b!=0                     gui=0x18  
+id 0x17 -> 0xE00DAAAA  always                   gui=0x1A  
+id 0x18 -> 0xE00DABE4  b==1                     gui=0x2A  
+id 0x18 -> 0xE00DABE4  b!=1                     gui=0x2B  
+id 0x19 -> 0xE00DAC14  b==1                     gui=0x2C  
+id 0x19 -> 0xE00DAC14  b!=1                     gui=0x2D  
+id 0x1A -> 0xE00DAC20  b==1                     gui=0x26  
+id 0x1A -> 0xE00DAC20  b!=1                     gui=0x27  
+id 0x1B -> 0xE00DAC2C  b==1                     gui=0x28  
+id 0x1B -> 0xE00DAC2C  b!=1                     gui=0x29  
+id 0x1C -> 0xE00DAA7A  ?                        gui=--    
+id 0x1C -> 0xE00DAA7A  always                   gui=--    
+id 0x1D -> 0xE00DAB0E  always                   gui=--    
+id 0x1E -> 0xE00DAC04  always                   gui=0x63  
+id 0x1F -> 0xE00DAB0E  always                   gui=--    
+id 0x20 -> 0xE00DAC02  b!=1                     gui=--    
+id 0x20 -> 0xE00DAC02  b==1                     gui=0x1D  BGMT_Q
+id 0x21 -> 0xE00DAC00  ?,b!=1                   gui=--    
+id 0x21 -> 0xE00DAC00  ?,b==1                   gui=0x1E  BGMT_LV
+id 0x21 -> 0xE00DAC00  ?                        gui=--    
+id 0x21 -> 0xE00DAC00  always                   gui=--    
+id 0x22 -> 0xE00DAA7A  ?                        gui=--    
+id 0x22 -> 0xE00DAA7A  always                   gui=--    
+id 0x23 -> 0xE00DABFE  b!=1                     gui=--    
+id 0x23 -> 0xE00DABFE  b==1                     gui=0x20  BGMT_LIGHT
+id 0x24 -> 0xE00DABFC  b!=1                     gui=--    
+id 0x24 -> 0xE00DABFC  b==1                     gui=0x19  
+id 0x25 -> 0xE00DABFA  b==1                     gui=0x08  
+id 0x25 -> 0xE00DABFA  b!=1                     gui=0x09  
+id 0x26 -> 0xE00DABF8  always                   gui=0x4B  GMT_GUICMD_PRESS_BUTTON_SOMETHING
+id 0x27 -> 0xE00DABF6  ?,b!=1                   gui=--    
+id 0x27 -> 0xE00DABF6  ?,b==1                   gui=0x1F  
+id 0x27 -> 0xE00DABF6  ?                        gui=--    
+id 0x27 -> 0xE00DABF6  always                   gui=--    
+id 0x28 -> 0xE00DAB5E  b>=10,?                  gui=--    
+id 0x28 -> 0xE00DAB5E  b>=10                    gui=--    
+id 0x28 -> 0xE00DAB5E  b<10,b=0                 gui=0x3C  
+id 0x28 -> 0xE00DAB5E  b<10,b=1,?               gui=--    
+id 0x28 -> 0xE00DAB5E  b<10,b=1                 gui=--    
+id 0x28 -> 0xE00DAB5E  b<10,b=2                 gui=0x38  
+id 0x28 -> 0xE00DAB5E  b<10,b=3,?               gui=--    
+id 0x28 -> 0xE00DAB5E  b<10,b=3                 gui=--    
+id 0x28 -> 0xE00DAB5E  b<10,b=4,?               gui=--    
+id 0x28 -> 0xE00DAB5E  b<10,b=4                 gui=--    
+id 0x28 -> 0xE00DAB5E  b<10,b=5                 gui=0x39  
+id 0x28 -> 0xE00DAB5E  b<10,b=6                 gui=0x3B  
+id 0x28 -> 0xE00DAB5E  b<10,b=7,?               gui=--    
+id 0x28 -> 0xE00DAB5E  b<10,b=7                 gui=--    
+id 0x28 -> 0xE00DAB5E  b<10,b=8,?               gui=--    
+id 0x28 -> 0xE00DAB5E  b<10,b=8                 gui=--    
+id 0x28 -> 0xE00DAB5E  b<10,b=9                 gui=0x3A  
+id 0x29 -> 0xE00DABF4  b==1                     gui=0x21  
+id 0x29 -> 0xE00DABF4  b!=1                     gui=0x22  
+id 0x2A -> 0xE00DABF2  ?                        gui=--    
+id 0x2A -> 0xE00DABF2  always                   gui=--    
+id 0x2B -> 0xE00DABF0  b==1                     gui=0x77  
+id 0x2B -> 0xE00DABF0  b!=1                     gui=0x78  
+self-check OK (5 pairs match the body log / 100D convention)

@@ -769,3 +769,511 @@ nix build --no-link --print-out-paths 'nixpkgs#ghidra-bin'
 
 No ROM copy was made; Ghidra read `roms/6D2/ROM0.BIN` in place and the scratch project lives
 outside the repo.
+
+---
+
+## Ghidra pass 2 — 2026-08-15
+
+**Status:** phase 1 static RE complete. Read-only, nothing built, nothing committed, no ROM copied
+out of the project tree.
+**Headline:** both gating questions are answered. `pRscAry` is **NULL on this path** — the real
+resource-ID array lives in the SsDevelop task context and is dumped below (16 IDs for the mode ML
+wants). The StateObject table decodes to a **7-input × 4-state** machine driven by
+`StateTransition` at `0xE04E3280` with **global input IDs 20–26**, and the whole encode is a
+self-driving chain: a caller posts **one** event (ID 20) and the machine runs to completion.
+
+### 0. Method — Ghidra was fetched and then not needed
+
+`nix build nixpkgs#ghidra-bin` resolved from cache to
+`/nix/store/l7ijhav4ff3vmfkz99rqaigha3qwvf9g-ghidra-12.1.2` in seconds (pass 1 had already
+populated the store). It was **not used**. Once pass 1 named the functions, both open questions
+reduced to (a) decoding a static data table and (b) constant-propagation over <600 bytes of Thumb —
+both of which `arm-none-eabi-objdump -b binary -m arm -M force-thumb --adjust-vma=<addr>` on a ROM
+slice answers faster than auto-analysing a 32 MiB blob with no entry points. Literal-pool and
+`ADR`-target scans were done in Python directly over `ROM0.BIN`.
+
+This is worth recording as a methodology result, because it is now two passes in a row: **the
+expensive-disassembler assumption in section 3 has been wrong both times.** What actually resolves
+this ROM is knowing the encodings (pass 1: Thumb `ADR` T1) and reading Canon's data tables
+(this pass).
+
+### 1. `pRscAry` — resolved, and the answer is "not where the struct says"
+
+#### 1.1 `LosslessPathRsc.pRscAry` is always NULL
+
+`0xE032973C` does not merely *fail to build* the array — it explicitly **zeroes both fields** in
+every one of the three mode branches. The quality code (returned by `0xE04EEA60(job)`) is compared
+at `0xE0329786`–`0xE032979C` and dispatched:
+
+| quality | branch | writes |
+|---|---|---|
+| `0x1000`, `0x10000` | `0xE0329ACA` | `Rsc+0x10 = 0` (EncMode 0), **`Rsc+0x00 = 0`**, **`Rsc+0x04 = 0`**, `Rsc+0x08 = 0xE0342596()`, `Rsc+0x0C = 4` |
+| `0x8000` | `0xE0329B10` | `Rsc+0x10 = 1`, **`Rsc+0x00 = 0`**, **`Rsc+0x04 = 0`**, `Rsc+0x08 = 0xE03425A0()`, `Rsc+0x0C = 9` |
+| `0x4000` | `0xE0329B44` | `Rsc+0x10 = 2`, **`Rsc+0x00 = 0`**, **`Rsc+0x04 = 0`**, `Rsc+0x08 = 0xE03425A0()`, `Rsc+0x0C = 9` |
+| anything else | — | `ASSERT(SsDevelopState.c:1616)` |
+
+(`r0` is set to 0 at `0xE0329784` and never reloaded before the branch targets, so the stores at
+`0xE0329AD0`/`0xE0329AD4`, `0xE0329B18`/`0xE0329B1C`, `0xE0329B4C`/`0xE0329B50` are literal zeroes.)
+
+The `pRscAry`/`RscNum` fields are part of the generic `sss*Path` argument shape — the sibling
+`sssAsyncLockEngineResourcesRawToYuv` path uses the same struct — and the LosslessPath simply
+declines to use them. Pass 1's "`0xE032973C` only stores the pointer" was one step too generous:
+it stores a null pointer.
+
+#### 1.2 Where the real array lives
+
+Resource arbitration is delegated to the **SsDevelop task context**, and the async lock request is
+a pointer *into* that context. From `0xE0329660` (`LockEnginResLosslessPath`):
+
+```
+e0329690  mov  r1, r6                 ; r6 = job
+e0329694  bl   0xE032A202             ; "does this job need a lock?"
+e032969c  beq  0xE03296CC             ; no -> "Wait LosslessPath(%d)", no lock
+e032969e  bl   0xE04EEA60(job)        ; quality code
+e03296a2  cmp  r0, #0x10000
+e03296a6  beq  0xE03296C2             ;   -> ctx+0x1C
+e03296aa  bl   0xE04EEA60(job)
+e03296ae  cmp  r0, #0x1000
+e03296b2  beq  0xE03296C2             ;   -> ctx+0x1C
+e03296b6  ldr  r1, =0xE0329609        ; CompLosslessPathResLockCB
+e03296b8  add.w r0, r4, #48           ;   -> ctx+0x30   (MRAW/SRAW)
+e03296bc  bl   0xE0329636             ; sssAsyncLockEngineResourcesLossless
+...
+e03296c2  ldr  r1, =0xE0329609
+e03296c6  add.w r0, r4, #28           ;   ctx+0x1C      (RAW — EncMode 0)
+e03296ca  b    0xE03296BC
+```
+
+`r4 = 0xE036B19E(job)` is the SsDevelop path context. The two embedded lock requests are
+initialised by the SsDevelop constructor at `0xE0327218`:
+
+| ctx offset | source | value |
+|---|---|---|
+| `+0x1C` | `bl 0xE0342600` @`0xE032728E` | **`0xE09425A0`** — pRscAry |
+| `+0x20` | `movs r0,#16` @`0xE0327298` | **16** — RscNum |
+| `+0x24` | `str r6` @`0xE03272B6` | 0 |
+| `+0x28` | `lsls r0,r4,#1` @`0xE03272A2` | lock-slot id `2*i` (byte) |
+| `+0x2C` | `str r6` @`0xE03272B0` | 0 |
+| `+0x30` | `bl 0xE0342608` @`0xE03272B8` | **`0xE09425E0`** — pRscAry |
+| `+0x34` | `movs r0,#23` @`0xE03272C2` | **23** — RscNum |
+| `+0x38` | `str r6` @`0xE03272E2` | 0 |
+| `+0x3C` | `add.w r0,sl,r4,lsl #1` @`0xE03272CC` | lock-slot id `2*i+1` (byte) |
+| `+0x40` | `str r6` @`0xE03272DE` | 0 |
+
+So the lock-request record is 20 bytes:
+
+```c
+struct EngResLockReq {            /* 0x14 bytes */
+    uint32_t *pRscAry;            /* +0x00 */
+    uint32_t  RscNum;             /* +0x04 */
+    void     *cbParam;            /* +0x08  written by 0xE0329636 (`str r5,[r4,#8]`)  */
+    uint8_t   lockSlotId;         /* +0x0C */
+    void    (*cb)(void *, int);   /* +0x10  written by 0xE0329636 (`str r6,[r4,#16]`) */
+};
+```
+
+The getters are the usual Canon table/count pairs in `Degeen*`-adjacent code:
+
+| Function | Returns |
+|---|---|
+| `0xE0342600` | `0xE09425A0` (pRscAry, RAW) |
+| `0xE0342604` | `16` |
+| `0xE0342608` | `0xE09425E0` (pRscAry, MRAW/SRAW) |
+| `0xE032460E` | `23` |
+
+`0xE09425A0` is referenced from exactly one place in the whole ROM — the literal pool at
+`0xE0342630` that feeds these getters. There is no second consumer.
+
+#### 1.3 The actual resource IDs
+
+Encoding is identical to DIGIC 5: **`(class << 16) | id`**, the same shape as
+[/home/chris/Vibe Coding/6D Mark II Magic Lantern 6D2/ml/modules/silent/lossless.c](ml/modules/silent/lossless.c)
+`:214-232`. Only the class numbering changed (D7 has more engine blocks).
+
+> **`LosslessEncMode 0` (RAW — the mode ML wants), `pRscAry = 0xE09425A0`, `RscNum = 16`:**
+>
+> ```c
+> /* 6D2 1.1.1, ROM0 @ 0xE09425A0 — LosslessPath RAW resource IDs */
+> static const uint32_t lossless_res_6d2_raw[16] = {
+>     0x00320022, 0x00320003, 0x0032000C, 0x0026000B,
+>     0x00260084, 0x00260085, 0x00260029, 0x00260036,
+>     0x000F0000, 0x000E0000, 0x001B0000, 0x0026003A,
+>     0x00340000, 0x00340001, 0x0034000E, 0x0034000F,
+> };
+> ```
+
+> **`LosslessEncMode 1/2` (MRAW/SRAW), `pRscAry = 0xE09425E0`, `RscNum = 23`:**
+>
+> ```
+> 0x00320022 0x00320003 0x0032000C 0x0026000B 0x00260085 0x00260029 0x00260036
+> 0x000F0000 0x000E0000 0x001B0000 0x0026003A 0x001A0000 0x00300000 0x00260088
+> 0x00340000 0x00340001 0x0034000E 0x0034000F 0x00340008 0x00340009 0x0034000A
+> 0x0034000B 0x0034000C
+> ```
+
+Note the RAW list is *not* a subset of the SRAW list — RAW has `0x00260084`, which appears
+**exactly once in the entire 32 MiB ROM** (at `0xE09425B0`). That ID is the lossless-RAW path's
+private resource.
+
+#### 1.4 How the lock is actually taken (it never touches `CreateResLockEntry`)
+
+`0xE0329636` is 42 bytes and does no locking itself:
+
+```
+e0329650  str  r6, [r4, #16]          ; req->cb     = CompLosslessPathResLockCB (0xE0329609)
+e0329654  str  r5, [r4, #8]           ; req->cbParam = job
+e032965a  ldr  r0, =0xE0328499        ; completion trampoline
+e032965c  b.w  0xE051B5C2             ; tail call
+```
+
+`0xE051B5C2` lives in `./Shoot/ShtPath/ShtSsDevelopPath/ShtSsDevelopPath.c` and is a two-line
+registration shim:
+
+```
+e051b5c2  ldr  r3, =<RAM globals>      ; 0xE051B738
+e051b5c6  movs r1, #11                 ; event id 11 = ASYNC LOCK
+e051b5c8  str  r0, [r3, #16]           ; stash the trampoline
+e051b5ca  ldr  r0, =<hTaskClass>       ; 0xE051B774
+e051b5cc  b.w  0xE042A6D4              ; post to the ShtSsDevelopPath task
+```
+
+The sibling at `0xE051B5D0` uses **event id 12** and slot `+0x14` — that is the async *unlock*,
+reached from `0xE0329C74` (`sssUnLockEngineResourcesLossless`).
+
+`0xE0328498` is the completion trampoline: it reads `req->cbParam` (`+0x08`) and `req->cb`
+(`+0x10`) and tail-calls the callback, i.e. `CompLosslessPathResLockCB(job, 0)`.
+
+**Consequence for ML:** the D5 model in `lossless.c` — build a resource array, call
+`CreateResLockEntry`, hand the handle to `TTL_Prepare` — has no D7 counterpart on this path. ML
+does not create a lock entry; it either (a) drives the state machine and lets the SsDevelop task do
+the locking with `0xE09425A0`, or (b) replicates the lock by calling `0xE051B5C2` with its own
+`EngResLockReq`. Option (a) is strictly less work and is what the call sequence in §4 assumes.
+
+### 2. Fields pass 1 left inferred — now read directly
+
+The three EDMAC channel numbers are written unconditionally in the common tail at `0xE03297AC`
+(all three mode branches `b` back to it):
+
+```
+e03297ae  movs r0, #17   ; str r0,[Rsc,#0x18]   WrRawCh   = 17
+e03297b2  movs r0, #48   ; str r0,[Rsc,#0x14]   RdBayCh   = 48
+e03297b8  movs r0, #3    ; str r0,[Rsc,#0x1C]   WrThumbCh = 3
+```
+
+Pass 1's item 2 ("`WrRawCh` at `+0x18` is inferred") is confirmed correct — the trace at
+`0xE0329A3C` uses format `0xE0329D80` `"LosslessPathRsc WrRawCh=%#x"` for `[Rsc+0x18]`, and
+`0xE0329A44` uses `0xE0329D9C` `"...WrThumbCh"` for `[Rsc+0x1C]`.
+
+> **`RdBayCh = 48`, `WrRawCh = 17`, `WrThumbCh = 3`.**
+
+The `LosslessPathParam` offsets are confirmed the same way from the trace block at
+`0xE0329A52`–`0xE0329A80`: `+0x00 pHuffmanTable`, `+0x04 PackMemNum`, `+0x08 pMemList`,
+`+0x0C RdBayAddress`, `+0x10 WrThumbAddress`. `PackMemNum` and `pMemList` are filled from the
+output memSuite by `0xE05EB19E(memsuite, &Param->PackMemNum, &Param->pMemList)` at `0xE03297C6`.
+
+#### `SharememTbl` is a register script, not a resource list
+
+`0xE0342596` returns `0xE0942208 + 0x88`, `0xE03425A0` returns `0xE0942208 + 0xA8`. The table is an
+array of **`{MMIO address, value}` pairs**, and `SharememNum` is the pair count — the two tables
+tile the region exactly (mode 0 ends where mode 1/2 begins):
+
+| Mode 0 (`SharememNum = 4`, `0xE0942290`) | Modes 1/2 (`SharememNum = 9`, `0xE09422B0`) |
+|---|---|
+| `0xD0003200 <- 0x80180000` | `0xD0003200 <- 0x80180000` |
+| `0xD0003204 <- 0x80180004` | `0xD0003204 <- 0x80180004` |
+| `0xD0003238 <- 0x80180008` | `0xD0003238 <- 0x80180008` |
+| `0xD000323C <- 0x8018000C` | `0xD000323C <- 0x8018000C` |
+| | `0xD0003220 <- 0x80120000` |
+| | `0xD0003224 <- 0x80130000` |
+| | `0xD0003228 <- 0x80140000` |
+| | `0xD000322C <- 0x80150000` |
+| | `0xD0003230 <- 0x80160000` |
+
+`0x8018xxxx` decodes as `ENABLE(bit31) | (0x18 << 16) | port`, and **`0x18` = 24 = the
+`MEM1TOLOSSLESS` index** in the engine path-name table at `0xE09420B0` (section 3). That is an
+independent confirmation that this table wires the shared-memory arbiter to the lossless path.
+
+> **New MMIO window: `0xD0003000` (engine shared-memory/connection arbiter), distinct from the
+> JPCORE window `0xD0100000..0xD0101FFF` found in pass 1.**
+
+### 3. The StateObject — decoded
+
+#### 3.1 The object
+
+Name string is **`"SSSState"`** at `0xE0F822F8` (neighbours `SCSState`, `SBSState`, `SDSState`,
+`SDCSState`, `SPSState`, `STSState`, `SFSState` — Canon's per-subsystem state machines).
+
+Three `CreateStateObject` calls sit in the SsDevelop constructor at `0xE0327218`, through veneer
+`0xE043B440` → `0xDF00A1FB`:
+
+| Call site | `r0` name | `r1` | `r2` matrix | `r3` | `[sp]` |
+|---|---|---|---|---|---|
+| `0xE0327258` | `"SSSState"` | 0 | `0xE090EB18` | 13 | 2 |
+| `0xE032726E` | `"SSSState"` | 0 | `0xE090EB68` | 20 | 5 |
+| `0xE0327284` | `"SSSState"` | 0 | `0xE090EC80` | 27 | 4 |
+
+Results are stored at `+0x00`, `+0x04`, `+0x08` of a 68-byte instance struct allocated at
+`0xE0327242`; the instance pointer array is at **RAM `0x5784`** (`0x5738 + 0x4C`, indexed by
+instance number), and the SsDevelop globals block is at RAM `0x5738`. A fourth matrix at
+`0xE090EA58` (8 rows × 3 states) exists and is created elsewhere — the site at `0xE03274CC` also
+loads `0xE090EA54` — but was not chased.
+
+#### 3.2 Entry format
+
+`struct state_transition { uint32_t next_state; void *handler; }`, exactly as
+[/home/chris/Vibe Coding/6D Mark II Magic Lantern 6D2/ml/src/state-object.h](ml/src/state-object.h)
+`:40-44` describes; rows are inputs, columns are states. The decisive structural tell: **every
+non-handler cell holds `{column_index, NULL}`** — "stay in this state, do nothing". That property
+holds for all 4 matrices with no exceptions and fixes the row widths unambiguously:
+
+| Matrix | Rows | States | Region | Ends at |
+|---|---|---|---|---|
+| `0xE090EA58` | 8 | 3 | `0xE090EA58..0xE090EB18` | — |
+| `0xE090EB18` | 5 | 2 | `0xE090EB18..0xE090EB68` | — |
+| `0xE090EB68` | 7 | 5 | `0xE090EB68..0xE090EC80` | — |
+| **`0xE090EC80`** | **7** | **4** | **`0xE090EC80..0xE090ED60`** | `0xE090ED6C` starts `"SPSState"` |
+
+They tile the region back-to-back with no gap and no overlap.
+
+#### 3.3 The LosslessPath transition table, decoded
+
+`0xE090EC80`, 7 inputs × 4 states, 28 entries, 224 bytes. Global input IDs are **20–26**
+(derivation in §3.4). Cells shown as `next_state / handler`; blank = `{state, NULL}` no-op.
+
+| input | state 0 | state 1 | state 2 | state 3 |
+|---|---|---|---|---|
+| **20** `ReqLosslessStart` | `0` / `0xE0329268` | — | — | — |
+| **21** `sssRequestAllocLosslessMemory` | `1` / `0xE03294DE` | — | — | — |
+| **22** `JudgeAllocLosslessMemory` | — | `1` / `0xE03295A2` | — | — |
+| **23** `LockEnginResLosslessPath` | — | `2` / `0xE0329660` | `2` / `0xE032A0B8` | — |
+| **24** `StartLosslessPath` | — | — | `3` / `0xE0329B78` | — |
+| **25** `CompLosslessPath` | — | — | — | `0` / `0xE0329C98` |
+| **26** `RetryAllocLosslessMemory` | `2` / `0xE0329FD6` | — | — | — |
+
+Raw cell addresses for the seven handlers: `0xE090EC84`, `0xE090ECA4`, `0xE090ECCC`, `0xE090ECEC`,
+`0xE090ECF4`, `0xE090ED14`, `0xE090ED3C`, `0xE090ED44`. Each of `0xE0329269`, `0xE0329B79`,
+`0xE0329C99` occurs **exactly once** in the whole ROM, at those cells — there is no second copy of
+this matrix.
+
+State semantics fall straight out:
+
+| state | meaning |
+|---|---|
+| **0** | idle / request accepted |
+| **1** | output memory allocation in flight |
+| **2** | engine resources locked, ready to start |
+| **3** | JPCORE encoding in flight |
+
+#### 3.4 The DryOS API, and why the input IDs are 20–26
+
+> **`StateTransition` is at `0xE04E3280`**, called as
+> `StateTransition(stateobj, ctx, inputId, job, 0)` — `r0` = state object (`ctx[+8]`), `r1` = ctx,
+> `r2` = input ID, `r3` = job, one stack word = 0.
+
+Thirty call sites exist in the `SsDevelopState.c` translation unit
+(`0xE0327218..0xE032A400`). The input ID is a `movs r2,#imm` immediately before each. Four
+independent chains fix the base at 20, because in every case the ID posted is exactly the ID whose
+matrix cell holds the function that must run next:
+
+| Posting site | inside | posts | matrix cell reached | handler |
+|---|---|---|---|---|
+| `0xE0327FB8` | handler of input 9 (`0xE0327E88`, a *different* matrix) | **20** | `0xE090EC84` | `ReqLosslessStart` — **the external entry point** |
+| `0xE0329454` | `ReqLosslessStart` `0xE0329268` | **21** | `0xE090ECA4` | `sssRequestAllocLosslessMemory` |
+| `0xE0329498`, `0xE03294D8` | `0xE032945E`, `CompAllocMemSuiteForLossless` `0xE032949E` | **22** | `0xE090ECCC` | `JudgeAllocLosslessMemory` |
+| `0xE0329602` | `JudgeAllocLosslessMemory` `0xE03295A2` | **23** | `0xE090ECEC` | `LockEnginResLosslessPath` |
+| `0xE0329630` | `CompLosslessPathResLockCB` `0xE0329608` | **24** | `0xE090ED14` | `StartLosslessPath` |
+| `0xE0329736` | `CompLosslessPathCB` `0xE03296EA` | **25** | `0xE090ED3C` | `CompLosslessPath` |
+| `0xE0329FD0` | `CompReAllocMemSuiteForLossless` `0xE0329F96` | **24** | `0xE090ED14` | `StartLosslessPath` (after realloc) |
+| `0xE032A096` | `EV_LOCK_ENGRSC_LOSSLESSPATH` `0xE032A028` | **23** | `0xE090ECEC` | `LockEnginResLosslessPath` |
+
+`stubs.S` has no stub for `0xE04E3280`; the nearest existing thing is `msg_queue_post` at
+`0xdf00b337` ([/home/chris/Vibe Coding/6D Mark II Magic Lantern 6D2/ml/platform/6D2.111/stubs.S](ml/platform/6D2.111/stubs.S) `:204`),
+which is a different API. `StateTransition` is a new stub ML would have to add.
+
+### 4. Sketched call sequence for ML
+
+The important structural finding: **this is not a seven-call API, it is a one-shot post.** Once
+input 20 lands, the machine self-drives — every step posts its own successor from its completion
+callback. ML supplies the input buffer and the output memSuite and waits.
+
+```c
+/* 6D2 1.1.1 — sketch, NOT verified on hardware */
+
+/* ROM */
+#define SSSTATE_INSTANCES      0x5784      /* RAM: array of SsDevelop instance ptrs */
+#define StateTransition        0xE04E3280  /* (obj, ctx, input, job, 0)             */
+#define SSS_EV_REQ_START       20          /* ReqLosslessStart                      */
+#define SSS_EV_COMPLETE        25          /* CompLosslessPath -> state 0           */
+
+/* 0. one-time: geometry gate from pass 1 §4 — hard ASSERT if violated */
+if (width % 16 || height % 8) return -1;
+
+/* 1. get the SsDevelop path context + its state object.
+ *    ctx  = 0xE036B19E(job)       -> holds pRscAry at +0x1C / +0x30
+ *    obj  = ctx[+8]               -> the SSSState object
+ *    NOTE: obtaining a valid `job` is the unresolved step — see §6.1 */
+
+/* 2. quality code must be 0x1000 or 0x10000 so that
+ *      - 0xE032973C picks LosslessEncMode 0 (RAW),
+ *      - 0xE0329660 picks pRscAry = 0xE09425A0 / RscNum = 16.
+ *    Both read it via 0xE04EEA60(job), so it is a property of the job, not an argument. */
+
+/* 3. fire the machine. Everything after this is Canon's. */
+StateTransition(obj, ctx, SSS_EV_REQ_START, job, 0);
+
+/*    20 ReqLosslessStart            -> posts 21
+ *    21 sssRequestAllocLosslessMemory  (async alloc of the output memSuite)
+ *         `-> CompAllocMemSuiteForLossless 0xE032949E posts 22
+ *    22 JudgeAllocLosslessMemory    -> posts 23   ("Wait(%d)" / "Ok(%d)")
+ *    23 LockEnginResLosslessPath    -> 0xE0329636 -> 0xE051B5C2 -> event 11
+ *                                      to the ShtSsDevelopPath task, which locks
+ *                                      the 16 IDs at 0xE09425A0
+ *         `-> trampoline 0xE0328498 -> CompLosslessPathResLockCB 0xE0329608 posts 24
+ *    24 StartLosslessPath 0xE0329B78 -> 0xE032A27C
+ *           0xE032A2B2  0xE032973C(ctx, ctx[+0x18], job)   fills Rsc + Param
+ *           0xE032A2BA  0xE051B560(argsPair, 0xE032A4F0)   hands them to the engine
+ *         `-> JPCORE IRQ 0xE0246F2C -> CompLosslessPathCB 0xE03296EA posts 25
+ *    25 CompLosslessPath 0xE0329C98  -> 0xE0329C74 sssUnLockEngineResourcesLossless
+ *                                       (event 12) ; next_state = 0 (idle)
+ *                                    -> "Lossless Retry(%d)" on failure, which posts 26
+ */
+
+/* 4. wait. The completion hook is CompLosslessPathCB (0xE03296EA); the compressed
+ *    size is produced in CompLosslessPath (0xE0329C98) — the D7 equivalent of
+ *    TTL_Finish's return value. Exact field not yet located (see §6.3). */
+```
+
+Mapped onto the seven D5 pointers in
+[/home/chris/Vibe Coding/6D Mark II Magic Lantern 6D2/ml/modules/silent/lossless.c](ml/modules/silent/lossless.c) `:69-75`:
+
+| D5 pointer | D7 equivalent | Callable directly? |
+|---|---|---|
+| `TTL_SetArgs` | `0xE032973C` | no — called from inside `0xE032A27C` |
+| `TTL_Prepare` | input **23** → `0xE0329660` | no — post the event |
+| `TTL_RegisterCBR` | — | gone; the callback is wired by the state machine |
+| `TTL_SetFlags` | — | gone; folded into the job's quality code |
+| `TTL_Start` | input **24** → `0xE0329B78` | no — post the event |
+| `TTL_Stop` | — | not found (see §6.4) |
+| `TTL_Finish` | input **25** → `0xE0329C98` | no — posted by the JPCORE IRQ |
+| `CreateResLockEntry` + array | **not used**; `pRscAry = 0xE09425A0` is Canon's, in the ctx | n/a |
+
+### 5. LiveView / movie-mode contention — measured, not guessed
+
+Section 5's "biggest unknown" can now be quantified. Intersecting the 16 RAW resource IDs against
+every other resource array in ROM0 (whole-word match on `(class<<16)|id`, arrays attributed to a
+translation unit by the nearest `__FILE__` string to their referencing code):
+
+| Array | Owning TU | IDs shared with lossless-RAW |
+|---|---|---|
+| `0xE0E897AC`, `0xE0E89B70` | **`MotionJPEG/MovieRecorder/Fring.c`** | `0x320003`, `0x340000`, `0x340001`, `0x34000E`, `0x34000F` — **5 of 16** |
+| `0xE09461A4` | **`ImgSeqCoop/ImgSeqCoopLv.c`**, `Epp/Vram/VramController.c` | `0x340000`, `0x340001`, `0x34000E`, `0x34000F` — **4 of 16** |
+| `0xE08363B8` | `DevCommon/PathParam/Utility/DecodeLossless.c` | `0x0E0000`, `0x0F0000`, `0x320003`, `0x320022` |
+| `0xE0836518` | `DevCommon/PathParam/Utility/{DecodeJpeg,Yuv2JpegEncode}.c` | `0x0E0000`, `0x0F0000`, `0x320003`, `0x320022` |
+| `0xE0942310` region (other SsDevelop paths, incl. `LvCommon/LvCFilterCommon.c`, `Epp/Vram/VramStage.c`) | SsDevelop / DevCommon | `0x320022`, `0x320003`, `0x32000C`, `0x0F0000`, `0x0E0000` |
+
+> **Verdict: the contention is real and specific.** The movie recorder claims resource class `0x34`
+> ids `{0, 1, 0x0E, 0x0F}` — all four of which the lossless RAW path also locks — plus `0x320003`.
+> While `Fring.c` holds those, `LockEnginResLosslessPath` cannot complete; it will sit in the async
+> lock (input 23, state 1) rather than advance to state 2, and `"Wait LosslessPath(%d)"`
+> (`0xE0329968`) is the trace that would fire.
+
+This is the DIGIC 7 form of PR #292's finding, and it is *narrower* than feared: the collision is 4–5
+IDs out of 16, and it is with the **movie recorder and the LV VRAM controller**, not with the whole
+Evf pipeline. Three practical consequences:
+
+1. The lock is **asynchronous and queued**, not a spin — so the failure mode is a stalled encode,
+   not an immediate ASSERT. That is a materially better starting point than D4/D5.
+2. Since ML's raw path already bypasses Canon's H.264 recorder, whether `Fring.c` actually holds
+   those resources during ML raw recording is an empirical question — it may not, in which case the
+   collision never materialises. **This is now a one-experiment question, not a research project.**
+3. `0x00260084` is unique to the lossless RAW list ROM-wide, so at least one required resource has
+   zero contention.
+
+Phase 2's "stills first, engine idle" plan is unchanged and remains correct: it avoids all of the
+above by construction.
+
+### 6. What this pass did *not* resolve — honestly
+
+1. **How ML obtains a valid `job`/`ctx` pair.** This is now the single biggest remaining item and it
+   has replaced `pRscAry` at the top of the list. Every handler takes `(ctx, job, ...)`; the job
+   carries the quality code (`0xE04EEA60`), the picture object (`0xE04EE98A`), and the output
+   memSuite. ML must either synthesise one or hijack an existing SsDevelop job. Not traced.
+2. **The `CreateStateObject` 4th argument (13 / 20 / 27) is not `max_inputs` as
+   [/home/chris/Vibe Coding/6D Mark II Magic Lantern 6D2/ml/src/state-object.h](ml/src/state-object.h) `:64`
+   models it.** It is an *exclusive upper bound on the global input ID range*, and the matrices have
+   5 / 7 / 7 rows respectively. Worse, handlers post IDs that cross matrix boundaries through a
+   single `ctx[+8]` object (`0xE0327E88` posts 12, 13 **and** 20 via the same `ldr r0,[r4,#8]`),
+   which the "four objects with disjoint ID ranges" reading does not explain. **The
+   input-ID→matrix-row arithmetic inside `0xE04E3280` is not decoded.** This does not affect the
+   operational answer — post ID 20, the chain is proven eight ways in §3.4 — but it does mean
+   ML cannot safely reuse ML's existing `STATE_FUNC` macro or `stateobj_install_hook` on this
+   machine without first reading `0xE04E3280`.
+3. **Where the compressed output size is read.** `CompLosslessPath` (`0xE0329C98`, 290 bytes) was
+   not decompiled. On D5 `TTL_Finish` returns it; here it must be a field the completion path
+   writes. Required before `mlv_lite` can shrink slots.
+4. **No `TTL_Stop` equivalent found.** There is no abort input in the 7×4 matrix. Whether an encode
+   in state 3 can be cancelled at all is unknown — relevant to `mlv_lite`'s clean stop/drain.
+5. **`0xE032A27C` still not traced into the engine registers.** The `0xD0100000` JPCORE poke and the
+   `0xD0003000` shared-memory writes are known to exist (§2) but the write sequence at
+   `0xE051B560` was not followed.
+6. **`0xE032A202`** — the "does this job need a lock" predicate gating `LockEnginResLosslessPath` —
+   was only skimmed. It reads a handle at globals `+0x48` and calls `0xE02E853C`/`0xE02E84DE`/
+   `0xE02E865C`/`0xE02E8628`. If it returns 0 the path proceeds *without* locking
+   (`"Wait LosslessPath(%d)"`), which may be the mechanism by which Canon runs lossless during
+   LiveView — worth chasing before assuming §5's contention is fatal.
+7. **Who posts input 26** (`RetryAllocLosslessMemory`) was not found; its `next_state = 2` from
+   state 0 is anomalous and unexplained.
+8. Nothing here is validated against hardware or QEMU. All static.
+
+### 7. Effect on the estimate
+
+Phase 1 was 3–5 sessions, revised after pass 1 to "1–2 remaining". Both nominated blockers are now
+closed: the resource IDs are dumped, and the state machine is decoded with the entry event
+identified. Item 6.1 (obtaining a job/ctx) is new and is genuinely phase-1 work, and items 6.3/6.4
+(output size, abort) are prerequisites for phase 3 rather than phase 2.
+
+**Revised phase 1 remainder: 1 session, focused on 6.1 + 6.3.** Phase 2 (stills, `silent.mo`)
+unchanged at 2–3. Phase 3's variance is *reduced* by §5: the LiveView risk is now a bounded,
+testable 4-ID collision with a named owner rather than an open-ended unknown. **Total 6–11**, down
+from 8–14.
+
+### 8. Reproduction
+
+```bash
+cd "/home/chris/Vibe Coding/6D Mark II Magic Lantern 6D2"
+export PATH="$(nix build --no-link --print-out-paths 'nixpkgs#gcc-arm-embedded')/bin:$PATH"
+
+# disassemble any ROM range as Thumb (file offset = addr - 0xE0000000)
+slice() {  # slice <addr> <len>
+  python3 -c "
+import sys,struct
+a=int(sys.argv[1],16); n=int(sys.argv[2],0)
+open('/tmp/s.bin','wb').write(open('roms/6D2/ROM0.BIN','rb').read()[a-0xE0000000:a-0xE0000000+n])" "$1" "$2"
+  arm-none-eabi-objdump -D -b binary -m arm -M force-thumb --adjust-vma="$1" /tmp/s.bin
+}
+
+slice 0xE0329ACA 0x50     # pRscAry = 0 in the mode-0 branch
+slice 0xE0329660 0x70     # resource-array selection by quality code
+slice 0xE0327218 0x80     # CreateStateObject x3 + the two pRscAry getters
+
+# the resource IDs, straight out of ROM0
+python3 -c "
+import struct; r=open('roms/6D2/ROM0.BIN','rb').read()
+for n,a in (('RAW  ',0xE09425A0),('SRAW ',0xE09425E0)):
+    c=16 if a==0xE09425A0 else 23
+    print(n,' '.join('%08X'%w for w in struct.unpack_from('<%dI'%c,r,a-0xE0000000)))"
+
+# the 7x4 LosslessPath transition table
+python3 -c "
+import struct; r=open('roms/6D2/ROM0.BIN','rb').read()
+for i in range(7):
+    b=0xE090EC80+i*32
+    print('input %2d:'%(20+i), ' '.join('{%d,%08X}'%struct.unpack_from('<2I',r,b+j*8-0xE0000000) for j in range(4)))"
+```
+
+Ghidra 12.1.2 was fetched (`/nix/store/l7ijhav4ff3vmfkz99rqaigha3qwvf9g-ghidra-12.1.2`) but no
+project was created and it was not run. Scratch files (ROM slices, the objdump helper, the
+translation-unit dump) live in
+`/tmp/claude-1000/-home-chris-Vibe-Coding-6D-Mark-II-Magic-Lantern-6D2/d1809f97-1ab5-4672-8a2b-1ab8dcfa3d5e/scratchpad/g2/`
+and can be deleted. No ROM was copied outside the project tree except transient slices in that
+scratch directory.

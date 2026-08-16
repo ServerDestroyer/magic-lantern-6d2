@@ -12,6 +12,7 @@ Patches live here instead.
 | 0004b | `qemu-eos/` | 6D2 `debugmsg.gdb`: EstimatedSize workaround + fix wrong `assert_log` address (renamed from 0004 to resolve the numbering collision; 0006 is reserved by spike 006's diagnostic build) | **Verified live in QEMU**; both parts upstreamable |
 | 0004 | `ml/` | `prop_request_change_wait`: skip timeout on denied writes — **hardware-confirmed 2026-08-15 16:12** (raw-video livelock cured, 25-frame MLV recorded) | Applied in tree; PR-2 ready to post |
 | 0005 | `ml/` | Capture build: disable the three `FEATURE_SHOW_*` flags (they zero the allocator pool — spike 005 A/B) | **Measured in QEMU**, both legs |
+| 0008 | `qemu-eos/` | Per-core interrupt controllers: decode the core-1 Canon bank, bank the GIC CPU interface, deliver to the owning core | **Measured in QEMU** (4 boots) — core 1 now receives its own interrupts for the first time; boot ceiling unchanged |
 
 ## Applying
 
@@ -318,3 +319,160 @@ rm -f modules/<path>/build/<mod>.* modules/<path>/build/module_complete \
 ```
 
 and always verify with `strings` on `build/zip/…`, never on the source tree.
+
+## 0008 — qemu-eos: per-core interrupt controllers (DIGIC 7 dual core)
+
+Against `qemu-eos` @ `4b667a1d3c`. Touches `hw/eos/eos.c`, `hw/eos/eos.h`,
+`hw/eos/dbi/logging.c` — the array-rank change to `irq_enabled`/`irq_id` reaches
+`logging.c`, so a diff of `eos.c` alone would not compile. Supersedes the
+earlier 12-line "re-assert `CPU_INTERRUPT_HARD` after the SGI ack" version of
+this patch, which is folded in and deleted (see *What replaced the stopgap*).
+
+Design and ROM evidence:
+`.planning/spikes/004-ml-boot-in-qemu/gic-redesign-plan.md`.
+
+### The defect
+
+The 6D2 has a **two-level** interrupt architecture. `0xC1000000` is a real
+Cortex-A9 GIC carrying only four INTIDs, and all 448 device interrupts sit
+behind **two Canon interrupt controllers, one per core** — `0xD4011000`
+(core 0) and `0xD5011000` (core 1), base table at ROM `0xE0835820` =
+`{0xD4010000, 0xD5010000}`. The common IRQ dispatcher at ROM `0xE026ABD4`
+reads `GICC_IAR`, takes `INTID & 1` as the bank index (ROM `0xE026ABF4`) and
+reads that bank's reason register.
+
+qemu-eos registered the `0xD5011000` window (`eos.c` handler table, `parm 2`)
+but `eos_handle_intengine` switched on `address` only and had **no case label
+for any core-1 address**, so every interrupt DryOS armed on core 1 was
+silently dropped and permanently undeliverable. `GICC_IAR` returned a hardcoded
+`0x20`, so core 1 was never told a device interrupt was its own. A single
+global `iar` served both banked CPU interfaces, and delivery went to
+`CURRENT_CPU` — whichever vCPU happened to be executing.
+
+### What changed
+
+- **`eos.h`** — `irq_enabled[INT_ENTRIES]` → `irq_enabled[2][INT_ENTRIES]`,
+  `irq_id` → `irq_id[2]`: one enable bitmap and one read-to-clear reason
+  register per bank, which is what the hardware has. `OTHER_CPU` (unused, and
+  NULL-derefs when `current_cpu == NULL`) deleted; `CURRENT_BANK` and
+  `CURRENT_IRQ_ID` added for the logging call sites.
+- **`eos_update_irq_line(bank)`** (new, `eos.c`) — a core's IRQ line is the OR
+  of a latched device interrupt and a pending SGI. Every path that changes
+  either recomputes the line through this one function. This is the root-cause
+  form of the stopgap: acking an SGI can no longer drop a live device
+  interrupt, *and* acking a device interrupt can no longer drop a pending SGI
+  (the mirror bug the stopgap did not cover). It is now the only caller of
+  `cpu_interrupt`/`cpu_reset_interrupt` in `hw/eos`.
+- **`eos_deliver_int(id)`** (new) — latches `id` in every bank that has it armed
+  and is not already servicing something, and raises those cores' lines.
+  Replaces `cpu_interrupt(CPU(CURRENT_CPU), …)` in both `eos_trigger_int` and
+  `eos_interrupt_timer_body`. Delivering to *every* armed bank rather than to a
+  single owner is load-bearing: the 6D2 arms the DryOS timer `1Bh` on both
+  banks, and a last-writer-wins owner starves whichever core armed it first.
+- **`eos_handle_intengine`** — derives `bank` from the `parm` the handler table
+  already passes (`2` = D7 CPU1, `5` = DX CPU1, `9` = D8 CPU1) and adds the
+  missing case labels for `0xD5011000/010/200`, `0xD0231000/010/200`,
+  `0xD233A000/010/200`. New case for the **disable** register
+  `0xD4011018`/`0xD5011018` (ROM `0xE01E4DF6`) — guest `disable_interrupt()`
+  was a no-op before this.
+- **`eos_handle_intengine_gic`** — `static int iar` → `gic_sgi_pending[2]`, one
+  slot per CPU interface, cleared on `GICC_IAR` read (GICv1 semantics) rather
+  than on any core's `GICC_EOIR` write. `GICC_IAR` now returns the pending SGI,
+  else `0x20 + cpu` when that core has a latched device interrupt, else `0x3FF`
+  (spurious; ROM `0xE026ACC0` returns immediately on it instead of dispatching
+  handler-table entry 0 for a reason register that reads 0). `ICDSGIR` decodes
+  the real `CPUTargetList` `[23:16]` and `TargetListFilter` `[25:24]` instead of
+  unconditionally kicking "the other CPU", and no longer scribbles the raw
+  register value into the `GICD_ISENABLER` shadow.
+- **Runtime check** (the one test): on a `GICD_ISENABLER` write that enables SPI
+  `0x20`/`0x21` on a dual-core model, warn if `ITARGETSR` is not `{1, 2}`. It
+  fires if and only if the assumption the bank routing rests on stops holding.
+  A second one-shot warning fires if a core ever reads the *other* bank's reason
+  register. Neither fired in any 6D2 boot.
+- **Comment corrections** — `0xC1100000` is a **PL310 L2 cache controller**, not
+  a multicore/mailbox block: `+0x100` is L2 Control (was labelled "Wake Up
+  CPU1?"), `+0x214` is the L2 Interrupt Mask (was "Signal to CPU1?"). The
+  `arm_gic.c` FIXME is kept with the condition under which it becomes worth
+  doing (a model that uses GIC priority/preemption, the A9 private/global
+  timers, or more than two cores — the 6D2 uses none of them).
+
+### What replaced the stopgap
+
+The previous version of this patch re-asserted `CPU_INTERRUPT_HARD` after the
+SGI ack when `irq_id` was set. With per-bank `irq_id` and
+`eos_update_irq_line()` that re-assert is dead code, so it is removed rather
+than stacked on.
+
+### Measured
+
+Stock 6D2 firmware, `qemu-eos` + patch 0007 spells, 120 s, `-d debugmsg`:
+
+| run | stderr lines | ASSERT / `Irregular TotalSheets` / `ErrorSend` | last message |
+|---|---|---|---|
+| baseline (stopgap only) | 470 | 0 | `DbgMgr [PM] Enable (ID = 10, cnt = 0/1)` |
+| fixed, run 1 | 465 | 0 | *identical* |
+| fixed, run 2 | 462 | 0 | *identical* |
+| fixed, run 3 | 465 | 0 | *identical* |
+
+**No regression:** all four runs produce the same **390 unique message texts**
+and stop at the same place (`nfcmgrstate_Initialize ce_init` → `DbgMgr [PM]
+Enable`). The 5-8 line delta is entirely SGI-log format plus the `CACHEMAINT …
+xN (omitted)` coalescing counts; 0007's own regression note records the same
+465-473 band across runs.
+
+60 s with `-d debugmsg,int`:
+
+| signal | baseline | fixed |
+|---|---|---|
+| `Taking exception 5 [IRQ]`, total | 6790 | **13310** |
+| …at `0xE00D97E0` (**core 1** idle park, `wfi; b .-2`) | **0** | **6520** |
+| …at `0xE04DCA82` (core 0, the insn after `msr CPSR` re-enables IRQs) | 6368 | 6716 |
+| `trigger int 0x147` immediate / `(delayed)` / `(delayed!)` | 22 / 152 / 176 | 22 / 152 / 176 |
+| `trigger int 0x28` immediate | 58 | 61 |
+| SGI sends / acks | 5 / 5 | 5 / 5 |
+
+**Core 1 receiving 6520 IRQs where it previously received none is the whole
+result.** It is the DryOS timer `1Bh` (`model_list.c` `dryos_timer_interrupt`
+for DIGIC 6/7), which the guest arms on bank 1 (`0xD5011010`) about 100x/s and
+which qemu-eos silently discarded; it is delivered from
+`eos_interrupt_timer_body`, whose timer-interrupt path logs nothing, which is
+why it shows up in the exception count and not in the `trigger int` tally.
+The explicit `eos_trigger_int` device counts are unchanged — those interrupts
+were and remain core-0 work, exactly as the real-hardware log predicted. The
+SGI sends are now balanced against acks with the correct id and target mask
+(`cpu 0 sending SGI 0xa to cpumask 2` / `cpu 1 ack SGI 0xa`, versus the old
+`cpu 1 ack SGI 0x0, iar: 0xa`).
+
+### Corrects the design document
+
+`gic-redesign-plan.md` §6.1 predicted **zero** `0xD5011010` writes over a boot,
+from the real-hardware log's zero core-1 ISRs, and concluded the work would be
+"correctness/determinism only". **Measured: non-zero** — core 1 arms `1Bh`
+about 100x/s, plus the eight UTimer ids `0Eh…7Eh` once each. (Measured with a
+temporary `fprintf` on the bank-1 enable path; `-d int` alone cannot see it,
+because `io_log()` is gated on `-d io`, not `CPU_LOG_INT`. The instrumentation
+is not in the final patch — with the case label present, `-d io` now shows it.)
+
+§6.4's reading of signal 1 also needs care. The pre-fix 6368 IRQ exceptions at
+`0xE04DCA82` are **real core-0 timer ticks** landing on the instruction right
+after a critical section re-enables interrupts (ROM `0xE04DCA72`: `mrs r1,CPSR;
+bic r1,#0x80; orr r1,r0; msr CPSR_fsxc,r1; bx lr`), not a spurious storm. A
+high exception count at a single PC is not by itself evidence of either health
+or livelock — the PC has to be decoded first.
+
+### Boot ceiling unchanged, as predicted
+
+Prediction N1 holds: the stall stays at `nfcmgrstate_Initialize:ce_init` →
+`DbgMgr [PM] Enable`. The interrupt system is not what is blocking the boot.
+The remaining candidates named in the plan (§7.2) are the unmodelled DIGIC 7
+I2C block and the SD/CSMgr event chain.
+
+### Risk not retired here
+
+`GICC_IAR` returning `0x3FF` instead of the old unconditional `0x20` is
+spec-correct and matches ROM `0xE026ACC0`, but `eos_handle_intengine_gic` is
+shared by every DIGIC 7 model (200D, 77D, 800D, M5, M6, M100, SX740) and only
+the 6D2 was re-tested. If one of those regresses, the bug-compatible fallback
+is to return `0x20 + cpu` unconditionally; everything else in the patch is
+additive for single-core models, where `bank` is always 0 and every pre-existing
+case label is untouched.

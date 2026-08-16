@@ -1,0 +1,9 @@
+ASSERT: m_VSize
+at ./ImgSeqCoop/ImgSeqCoopStore.c:194, shoot_task:e04471f1
+lv:1 mode:0
+
+
+Magic Lantern version: 2026-08-15.6D2.111
+Git commit: 3f24042a4 dev
+Built on 2026-08-16 02:39:10 UTC by chris@legion.
+Free Memory  : 409K + 2039K

@@ -1,0 +1,11 @@
+[2.013] [probe] max 135MB steps 34 slowest 101ms@136MB last TIMEOUT
+[59.511] [probe] max 135MB steps 34 slowest 91ms@136MB last TIMEOUT
+[64.194] [probe] max 135MB steps 34 slowest 102ms@136MB last TIMEOUT
+[75.196] [probe] max 135MB steps 34 slowest 100ms@136MB last TIMEOUT
+[119.865] [probe] max 135MB steps 34 slowest 92ms@136MB last TIMEOUT
+[137.538] raw inactive: lv=0 movie=0 gui=0
+[1.912] [probe] max 135MB steps 34 slowest 104ms@136MB last TIMEOUT
+[13.153] raw inactive: lv=0 movie=0 gui=9
+[20.300] [probe] max 135MB steps 34 slowest 99ms@136MB last TIMEOUT
+[25.970] [probe] max 135MB steps 34 slowest 100ms@136MB last TIMEOUT
+[44.598] raw inactive: lv=1 movie=0 gui=0
