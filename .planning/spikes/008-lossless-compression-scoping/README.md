@@ -519,3 +519,253 @@ sed -n '82,262p' ml/modules/silent/lossless.c
 # QEMU's JPCORE stub
 sed -n '1163,1240p' qemu-eos/hw/eos/engine.c
 ```
+
+---
+
+## Ghidra pass 1 — 2026-08-15
+
+**Status:** phase 1 static RE substantially complete. Read-only, nothing built, nothing committed.
+**Tools:** Ghidra 12.1.2 via `nix build nixpkgs#ghidra-bin` (950 MiB fetch, cached, ~35 min).
+**Headline:** section 3's "no usable veneer/xref shortcut — this work requires a real disassembler"
+was **wrong, and for a specific and correctable reason.** All 49 target strings resolve to exactly
+one referencing site each. The API surface is now enumerated.
+
+### 0. Why the earlier scan returned zero — the actual bug
+
+The two passes run for section 3 (32-bit literal pool, `MOVW`/`MOVT` reconstruction) were both
+looking for the wrong encoding. Canon's DryOS `DebugMsg` format strings are stored **inline in the
+function body**, a few hundred bytes from the code that uses them, and are addressed with the
+**16-bit Thumb `ADR` (T1)** form — `1010 0 Rd imm8`, opcode range `0xA000..0xA7FF`,
+`Rd = Align(PC,4) + imm8*4`, reach 0..1020 bytes. That encoding appears in neither of the
+original scans, and a literal pool is never involved because the string is close enough to
+address directly.
+
+Adding T1 `ADR` (and, secondarily, the 32-bit `ADR.W` `T3`/`T4` forms) resolved **49 of 49**
+targets, 102 reference sites total:
+
+| Encoding | Sites found | Notes |
+|---|---|---|
+| `ADR` T1 (16-bit) | 88 | the encoding that was missed; carries essentially the whole subsystem |
+| `ADR.W` T3/T4 (32-bit) | 12 | used where the string is >1020 B away |
+| literal pool word | 2 | `MEM1TOLOSSLESS`, `MEM1TOSSRAW` — the control case, unchanged |
+| `MOVW`/`MOVT` pair | 0 | genuinely unused for these strings; the original scan was not wrong here |
+
+The `MEM1TOLOSSLESS` control case still resolves to exactly the path table at `0xE09420B0`,
+so the xref machinery is validated in both directions.
+
+**Notably, Ghidra's own xref machinery also returns zero on this ROM** unless the ARM constant/
+reference analyzer is run — a seeded-disassembly-only pass reports `n=0` for every anchor. The
+spike's conclusion "Ghidra-class analysis required" was therefore not just unnecessary, it would
+not have helped on its own. What was required was the right instruction encoding.
+
+### 1. Resolved function entries
+
+All addresses are Thumb (`entry|1` for a `THUMB_FN` stub). Sizes are Ghidra's, from seeded
+disassembly + `CreateFunctionCmd`; they agree exactly with an independent prologue/BL-target
+walk on all the small wrappers.
+
+| Entry | Size | Evidence (string it emits) | Role — mapped to `lossless.c` |
+|---|---|---|---|
+| **`0xE032973C`** | 550 | all 13 `LosslessPathRsc`/`LosslessPathParam` field traces | **≈ `TTL_SetArgs`** — fills both structs |
+| **`0xE0329B78`** | 54 | `StartLosslessPath(%d)` @`0xE0329EC8` | **≈ `TTL_Start`** (thin wrapper) |
+| **`0xE032A27C`** | 100 | — (tail call of the above) | **the real starter** |
+| **`0xE0329636`** | 42 | `sssAsyncLockEngineResourcesLossless %x(%x)` | **≈ `TTL_Prepare`**, async |
+| **`0xE0329608`** | 46 | `CompLosslessPathResLockCB(%d)` | **the async ResLock callback** |
+| `0xE0329660` | 138 | `LockEnginResLosslessPath(%d)`, `Wait LosslessPath(%d)` | lock driver; calls `0xE0329636` |
+| `0xE03296EA` | 82 | `CompLosslessPathCB(%d)(%#x)(%d)` | ≈ `TTL_RegisterCBR` target |
+| `0xE0329C74` | 88 | `sssUnLockEngineResourcesLossless %x(%x)` | ≈ `TTL_Finish` (unlock half) |
+| `0xE0329C98` | 290 | `CompLosslessPath(%d)`, `Lossless Retry(%d)` | ≈ `TTL_Finish` (completion half) |
+| `0xE0329268` | 78 | `ReqLosslessStart(%d)` | job submission |
+| `0xE03294DE` | 200 | `sssRequestAllocLosslessMemory(...)` | output buffer alloc |
+| `0xE032949E` | 64 | `CompAllocMemSuiteForLossless(%d)` | alloc-complete callback |
+| `0xE03295A2` | 102 | `JudgeAllocLosslessMemory Wait/Ok(%d)` | alloc arbitration |
+| `0xE0329F96` | 64 | `CompReAllocMemSuiteForLossless(%d)` | realloc callback |
+| `0xE0329FD6` | 82 | `RetryAllocLosslessMemory(%d)` | retry allocator |
+| `0xE032A028` | 144 | `EV_LOCK_ENGRSC_LOSSLESSPATH(%d)(%d)` | engine-resource event |
+| `0xE0327E88` | 314 | `LosslessPath Skip(%d)` | skip path |
+| `0xE032804E` | 72 | `NotifyLosslessPathComp(%d)` | completion notify |
+| **`0xE0213AE4`** | 122 | both `JPCORE_RESTRICTION_*` asserts | **geometry validator** |
+| `0xE0246A88` | 22 | `JpCore.c` | JPCORE register accessor |
+| `0xE0246F2C` | 202 | `JpCoreIntrHandler` | encoder completion IRQ |
+| `0xE015936A` | 184 | `LosslessEncode.c` | encode entry |
+| `0xE01D6D46` | 136 | `LosslessEncodeBase.c` | encode base |
+| `0xE051C874` | 192 | `Degeen2Lossless` | de-Bayer/gain stage |
+| `0xE03420C6` | 180 | `Degeen2GainRegForLossless` | digital-gain hook (3 callers) |
+
+Two shared helpers, worth naming because they appear in every trace above:
+`0xE043B4F0` is an ARM veneer (`LDR PC,[PC,#-4]` → `0xDF006E6D`) to **`DryosDebugMsg`**, which
+[/home/chris/Vibe Coding/6D Mark II Magic Lantern 6D2/ml/platform/6D2.111/stubs.S](ml/platform/6D2.111/stubs.S)
+already has at `:68` as `0xdf006e6c`. `0xE0617620` is `ASSERT(exprStr, fileStr, line)`.
+
+### 2. Call tree
+
+The subsystem is **not** a flat callable API. It is a DryOS **StateObject state machine** whose
+handlers live in a transition table at **`0xE090EAF0..0xE090ED5C`** — pairs of
+`{nextState, handlerFnPtr}`. Almost every function above has *zero* direct `BL` callers and is
+reached only through that table. This is the structural reason `TwoInTwoOut`-style direct entry
+points do not exist on D7.
+
+```
+ SsDevelopState StateObject  (file string "./SsDevelop/SsDevelopState.c" @0xE03281C4)
+   table 0xE090EAF0 ─┬─[0xE090EC84]→ 0xE0329268  ReqLosslessStart
+                     ├─[0xE090ECA4]→ 0xE03294DE  sssRequestAllocLosslessMemory
+                     │                   └─→ 0xE032949E CompAllocMemSuiteForLossless
+                     ├─[0xE090ECCC]→ 0xE03295A2  JudgeAllocLosslessMemory
+                     ├─[0xE090ECEC]→ 0xE0329660  LockEnginResLosslessPath
+                     │                   └─BL→ 0xE0329636 sssAsyncLockEngineResourcesLossless
+                     │                            └─(async)→ 0xE0329608 CompLosslessPathResLockCB
+                     │                                          └─→ 0xE03296EA CompLosslessPathCB
+                     ├─[0xE090ED14]→ 0xE0329B78  StartLosslessPath
+                     │                   └─BL→ 0xE032A27C  (real start)
+                     ├─[0xE090ED3C]→ 0xE0329C98  CompLosslessPath / Lossless Retry
+                     │                   └─→ 0xE0329C74 sssUnLockEngineResourcesLossless
+                     ├─[0xE090ED44]→ 0xE0329FD6  RetryAllocLosslessMemory
+                     └─[0xE090EAFC]→ 0xE032A028  EV_LOCK_ENGRSC_LOSSLESSPATH
+
+ args setter 0xE032973C is called from 0xE032A2B2 (inside 0xE032A27C, the starter)
+   └─→ 0xE0342246 / 0xE034226C / 0xE03422B0  →  0xE03420C6 Degeen2GainRegForLossless
+```
+
+Level-2 callers of the two externally-reachable entries:
+`0xE0329268` ← `0xE0B20EF0` (in `0xE0B20744`) ← `0xE058F650`;
+`0xE032A028` ← `0xE074651A` (in `0xE07459BC`) ← `0xE095DD54`.
+
+### 3. The args structs — recovered field by field
+
+`0xE032973C(ctx, argsPair, job)` where `argsPair[0] = LosslessPathRsc*`, `argsPair[1] =
+LosslessPathParam*`. Offsets read directly off the `LDR Rn,[Rbase,#imm]` feeding each `DebugMsg`,
+and confirmed against Ghidra's decompilation of the same function.
+
+```c
+struct LosslessPathRsc {          // argsPair[0]
+    void *pRscAry;                // +0x00   resource-ID array   (cf. lossless.c:214-232)
+    uint32_t RscNum;              // +0x04   entry count
+    void *SharememTbl;            // +0x08
+    uint32_t SharememNum;         // +0x0C   == 4 for mode 0, 9 for modes 1/2
+    uint32_t LosslessEncMode;     // +0x10   0 / 1 / 2  — see below
+    uint32_t RdBayCh;             // +0x14   read  EDMAC channel (Bayer in)
+    uint32_t WrRawCh;             // +0x18   write EDMAC channel (raw out)   [inferred from spacing]
+    uint32_t WrThumbCh;           // +0x1C   write EDMAC channel (thumbnail out)
+};
+struct LosslessPathParam {        // argsPair[1]
+    void *pHuffmanTable;          // +0x00   explicit — the D5 path had this implicit
+    uint32_t PackMemNum;          // +0x04
+    void *pMemList;               // +0x08
+    void *RdBayAddress;           // +0x0C
+    void *WrThumbAddress;         // +0x10
+};
+```
+
+**`LosslessEncMode` values — the spike's "second-order unknown" is answered.** `0xE032973C`
+switches on a picture-quality code and asserts (`SsDevelopState.c:1616`) on anything else:
+
+| quality code | `LosslessEncMode` | `SharememNum` | gain hook |
+|---|---|---|---|
+| `0x1000` (and `0x10000`) | **0** | 4 | `0xE0342246` |
+| `0x8000` | **1** | 9 | `0xE034226C` |
+| `0x4000` | **2** | 9 | `0xE03422B0` |
+
+Three modes, same shape as D5's RAW / MRAW / SRAW. **Mode 0 is the one ML wants.**
+
+### 4. JPCORE geometry restrictions — resolved to constants
+
+`0xE0213AE4(InputWidth, InputHeight, ...)`, decompiled:
+
+```c
+if ((param_1 & 0xf) != 0) ASSERT("!( InputWidth  % JPCORE_RESTRICTION_HORIZONTAL_MULTIPLE )", …, 356);
+if ((param_2 & 0x7) != 0) ASSERT("!( InputHeight % JPCORE_RESTRICTION_VERTICAL_MULTIPLE   )", …, 357);
+```
+
+> **`JPCORE_RESTRICTION_HORIZONTAL_MULTIPLE = 16`, `JPCORE_RESTRICTION_VERTICAL_MULTIPLE = 8`.**
+
+`res_x` must be a multiple of 16 and `res_y` a multiple of 8 or the camera asserts. This is the
+D7 analogue of PR #292's "encodable width `4 mod 8`" and is a hard gate on phase 3 step 2.
+
+### 5. MMIO — the D7 JPCORE register window
+
+Resolved by walking every `LDR`-literal and `MOVW`/`MOVT` inside the `JpCore.c` translation unit
+(30 reference sites, code span `0xE0246A90..0xE0247560`):
+
+| Address | Hits | Note |
+|---|---|---|
+| **`0xD0100000`** | 21 | **JPCORE base** — also used by `JpCoreIntrHandler` |
+| `0xD0100200` | 2 | |
+| `0xD0100400` | 4 | |
+| `0xD0100500` | 1 | |
+| `0xD0100600` | 1 | |
+| `0xD0100928` | 1 | |
+| `0xD0101000` | 2 | second bank |
+
+> **The 6D2's JPCORE window is `0xD0100000..0xD0101FFF`.**
+
+qemu-eos maps JPCORE at the D4/D5 addresses `0xC0E00000` / `0xC0E10000` / `0xC0E20000`
+(`qemu-eos/hw/eos/eos.c:651-653`), which as section 5 predicted is **not mapped at all for this
+model**. Adding a `{ "JP7", 0xD0100000, 0xD0101FFF, eos_handle_jpcore, 2 }` window is now a
+one-line change and is the cheapest way to get the call sequence logged in emulation.
+
+For orientation, the ROM-wide MMIO histogram is dominated by `0xDF000000` (82 `MOVW`/`MOVT`
+pairs) — that is the RAM-resident DryOS core, not engine registers.
+
+### 6. Veneer table and `stubs.S` — still nothing (question 3 answered: no)
+
+ROM0 contains 1336 ARM long-branch veneers (`LDR PC,[PC,#-4]` = `0xE51FF004` + target word),
+largest blocks at `0xE0CFBA44`, `0xE0CFBE50`, `0xE0CFC264`, `0xE0CFC670` and `0xE043B188..0xE043B4F8`.
+The `0xE043Bxxx` block the brief pointed at is real and contains the `DryosDebugMsg` veneer, but:
+
+- **no** LosslessPath candidate is the target of any veneer;
+- **none** of the 25 entries matches any of the 133 addresses in `6D2.111/stubs.S`.
+
+These veneers are long-branch thunks into the RAM-resident core (237 of them target `0xDF000000`),
+not an export table. Section 3's conclusion stands — every address above has to be hard-coded.
+
+### 7. What this pass did *not* resolve — honestly
+
+1. **`pRscAry` contents.** The resource-ID array — the direct analogue of `lossless.c:214-232`,
+   and a required input — is built elsewhere; `0xE032973C` only stores the pointer. Not traced.
+   **This is the single biggest remaining phase-1 item.**
+2. **`WrRawCh` at `+0x18` is inferred**, from `RdBayCh` at `+0x14` and `WrThumbCh` at `+0x1C`.
+   The instruction window around its `DebugMsg` did not decode cleanly. Low risk, unconfirmed.
+3. **The StateObject event/state numbering.** The table at `0xE090EAF0` was dumped and the
+   handlers identified, but the input-event IDs and state indices that drive it were not decoded,
+   so *how* ML would enter the machine (post an event vs. call a handler directly) is still open.
+   This is the D7 replacement for "call `TTL_Prepare`, then `TTL_Start`" and it is not yet answered.
+4. **`0xE032A27C`** (the real starter, 100 bytes) was located but not decompiled or traced into
+   the EDMAC/register writes. The engine-start register poke itself is therefore *not* pinned to a
+   specific offset within the `0xD0100000` window — only the window is known.
+5. **Ghidra auto-analysis was deliberately not run.** The pass used `-noanalysis` plus seeded
+   Thumb disassembly at 25 known entries, because full auto-analysis of a 32 MiB blob with no
+   entry points was unnecessary once the reference sites were known from first principles. A full
+   analysis run would likely improve items 1, 3 and 4 and is the obvious next Ghidra step.
+6. Nothing here is validated against hardware. All of it is static.
+
+### 8. Effect on the estimate
+
+Phase 1 was budgeted at 3–5 sessions. Roughly 60–70% of it is now done in one pass: the seven
+entry points exist and are named, both structs are recovered, `LosslessEncMode` is decoded, and
+the geometry constraint is a concrete pair of integers. The async-lock protocol is *mapped* but
+not *understood* — the StateObject entry mechanism (item 3) is the real remaining risk and is the
+thing most likely to invalidate the "seven addresses" model that
+[/home/chris/Vibe Coding/6D Mark II Magic Lantern 6D2/ml/modules/silent/lossless.c](ml/modules/silent/lossless.c)
+is built around. **Revised phase 1 remainder: 1–2 sessions.** Phases 2 and 3 are unchanged.
+
+### 9. Reproduction
+
+```bash
+cd "/home/chris/Vibe Coding/6D Mark II Magic Lantern 6D2"
+
+# Ghidra 12.1.2, headless, seeded Thumb disassembly (no auto-analysis needed)
+nix build --no-link --print-out-paths 'nixpkgs#ghidra-bin'
+"$(nix build --no-link --print-out-paths 'nixpkgs#ghidra-bin')/bin/ghidra-analyzeHeadless" \
+    /tmp/gproj p6d2 \
+    -import roms/6D2/ROM0.BIN \
+    -processor ARM:LE:32:Cortex -loader BinaryLoader -loader-baseAddr 0xE0000000 \
+    -noanalysis -scriptPath /tmp/gs -postScript LosslessProbe.java
+# LosslessProbe.java: set TMode=1 over the whole block FIRST (else every seed after the
+# first throws ContextChangeException), then DisassembleCommand + CreateFunctionCmd per seed.
+
+# the encoding the earlier passes missed — 16-bit Thumb ADR (T1)
+#   halfword h in 0xA000..0xA7FF  =>  target = ((addr+4) & ~3) + (h & 0xFF)*4
+```
+
+No ROM copy was made; Ghidra read `roms/6D2/ROM0.BIN` in place and the scratch project lives
+outside the repo.
