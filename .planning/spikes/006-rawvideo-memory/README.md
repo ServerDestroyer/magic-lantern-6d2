@@ -135,3 +135,20 @@ On-camera protocol (console photos into `Pics of debuging/`; strict order):
 Each outcome maps to exactly one fix; nothing in this session requires pulling the
 battery. Spell capture (Session 2 of BODY_TEST_PLAN.md) stays first priority — this
 runs in the session after it.
+
+## NEW SYMPTOM (2026-08-15 ~19:07, rev-1 0006 build): stop-path hang at "Flushing buffers... 1 frames left"
+
+Photo `Pics of debuging/20260815_190714.jpg`: after stopping a raw take, the
+overlay froze at `Flushing buffers... 1 frames left` with a solid column of
+`No memory suites.` spam beneath it and a UILock denial line — the writer is
+draining its last frame while the memory suites are already torn down. UI
+appeared hung (user report). BUT both takes from that session
+(`footage/M15-1901.MLV` 2.0 GB/558 frames, `M15-1906.MLV` 1.35 GB/373 frames)
+are FINALIZED (videoFrameCount set), so the file close does complete — the
+hang is in the post-stop UI/cleanup path, same neighborhood as Bug 2's dead
+state, now seen at stop time rather than re-REC time. Second photo
+(`20260815_190630.jpg`) shows the allocation printout garbled/interleaved with
+LV — console redraw corruption during buffer setup, cosmetic but note it.
+Session ran the REV 1 build (card sync to rev 2 hadn't happened yet), so fps
+headers are still garbage (21567/22481) and probe/dead-state instrumentation
+was the old kind. Retest under Session 4b (rev 2) still pending.
