@@ -59,18 +59,22 @@ the track assignment + contention rules. State ground truth lives in
    Track A measurement, twice.)
 8. **Branch switches in `ml/` count as builds under rule 1** — a checkout
    swaps `platform/6D2.111` headers and empties `build/`.
-9. **Do not drop `stash@{0}` in `ml/`** ("track-C: found state...", holds the
-   pre-Track-C uncommitted state with patches 0001+0002+0004 applied) without
-   checking with Track C or Chris. Current shared tree (after Track A,
-   2026-08-15 ~16:30): branch `dev`, patches 0001+0002+0004 applied plus 0005
-   (the three `FEATURE_SHOW_*` flags commented out — they zero the allocator
-   pool in capture builds); `build/` holds the packaged capture build
-   (autoexec.bin md5 969d407d01fc2b140cdfd3b20a9f9f34). Full pre-Track-C state
-   still recoverable via the stash.
-10. Track C builds now happen only in isolated worktrees
-    `/home/chris/ml6d2/trackC-wt2` and `trackC-wt3`, never the shared tree.
-    Track C branches in the shared repo: `6d2-mov-time-limit`,
-    `d678-prop-wait-denied`, `log-d678-no-brick-spin`.
+9. `stash@{0}` in `ml/` ("track-C: found state...") was **verified redundant**
+   in the 2026-08-15 evening housekeeping pass (Chris-approved): its diff was
+   compared byte-for-byte against patches 0001+0002+0004(+0005) applied to
+   `dev@3f24042a4` — the only difference is transient A/B comment wording in
+   `features.h`, no functional content. Cleared for Chris to drop
+   (`git stash drop` was permission-blocked for the session). Current shared
+   tree (after Track A, 2026-08-15 ~16:30): branch `dev`, patches
+   0001+0002+0004 applied plus 0005 (the three `FEATURE_SHOW_*` flags
+   commented out — they zero the allocator pool in capture builds); `build/`
+   holds the packaged capture build (autoexec.bin md5
+   969d407d01fc2b140cdfd3b20a9f9f34).
+10. Track C builds happened only in isolated worktrees; both worktrees are
+    cleared for removal in the housekeeping pass (`trackC-wt2` was reused
+    detached-HEAD for the stash verification; the branches live in the shared
+    repo refs and as format-patches in `.planning/prs/`). Track C branches:
+    `6d2-mov-time-limit`, `d678-prop-wait-denied`, `log-d678-no-brick-spin`.
 
 ## Status per track (update in place, one line each)
 

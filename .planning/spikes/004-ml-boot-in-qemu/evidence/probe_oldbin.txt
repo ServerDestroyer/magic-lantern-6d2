@@ -1,0 +1,256 @@
+=== info threads ===
+  Id   Target Id                    Frame 
+* 1    Thread 1.1 (CPU#0 [halted ]) 0xe02c6100 in ?? ()
+  2    Thread 1.2 (CPU#1 [halted ]) 0xe00d97e0 in ?? ()
+
+=== CPU0 regs ===
+[Switching to thread 1 (Thread 1.1)]
+#0  0xe02c6100 in ?? ()
+pc             0xe02c6100          0xe02c6100
+lr             0xe02c609b          -533962597
+sp             0x2013a0            0x2013a0
+cpsr           0x600000f3          1610612979
+
+=== CPU1 regs ===
+[Switching to thread 2 (Thread 1.2)]
+#0  0xe00d97e0 in ?? ()
+pc             0xe00d97e0          0xe00d97e0
+lr             0xdf004fb3          -553627725
+sp             0x1fef70            0x1fef70
+cpsr           0x40000073          1073741939
+[Switching to thread 1 (Thread 1.1)]
+#0  0xe02c6100 in ?? ()
+
+=== disas around 0x001037A8 ===
+Dump of assembler code from 0x103740 to 0x1037e0:
+   0x00103740:	adds	r1, #238	@ 0xee
+   0x00103742:	movs	r1, r2
+   0x00103744:	ldr	r5, [r5, #100]	@ 0x64
+   0x00103746:	svc	0
+   0x00103748:	bls.n	0x103826
+   0x0010374a:	b.n	0x103786
+   0x0010374c:	bge.n	0x1036de
+   0x0010374e:	b.n	0x10378a
+   0x00103750:	blt.n	0x10379a
+   0x00103752:	b.n	0x10378e
+   0x00103754:	add	r8, r12
+   0x00103756:	movs	r0, r2
+   0x00103758:	bge.n	0x1037a2
+   0x0010375a:	b.n	0x103796
+   0x0010375c:	bge.n	0x103712
+   0x0010375e:	b.n	0x10379a
+   0x00103760:	adds	r2, #22
+   0x00103762:	movs	r1, r2
+   0x00103764:	blt.n	0x10376e
+   0x00103766:	b.n	0x1037a2
+   0x00103768:	blt.n	0x1037fa
+   0x0010376a:	b.n	0x1037a6
+   0x0010376c:	bge.n	0x103712
+   0x0010376e:	b.n	0x1037aa
+   0x00103770:	bls.n	0x1036d2
+   0x00103772:	b.n	0x1037ae
+   0x00103774:	strh	r7, [r1, #44]	@ 0x2c
+   0x00103776:	svc	0
+   0x00103778:	movs	r0, r0
+   0x0010377a:	movs	r0, r0
+   0x0010377c:	movs	r0, r0
+   0x0010377e:	movs	r0, r0
+   0x00103780:	push	{r2, r3}
+   0x00103782:	stmdb	sp!, {r4, r5, r6, r7, r8, r9, r10, r11, lr}
+   0x00103786:	mov	r10, r0
+   0x00103788:	mov	r11, r1
+   0x0010378a:	sub	sp, #52	@ 0x34
+   0x0010378c:	mov	r7, lr
+   0x0010378e:	ldr	r4, [pc, #252]	@ (0x10388c)
+   0x00103790:	ldr	r3, [r4, #0]
+   0x00103792:	cmp	r3, #0
+   0x00103794:	beq.n	0x103880
+   0x00103796:	ldrd	r3, r2, [r4, #4]
+   0x0010379a:	subs	r3, r3, r2
+   0x0010379c:	cmp	r3, #99	@ 0x63
+   0x0010379e:	ble.n	0x103880
+   0x001037a0:	ldr	r3, [pc, #236]	@ (0x103890)
+   0x001037a2:	add.w	r0, r4, #12
+   0x001037a6:	blx	r3
+   0x001037a8:	mov	r9, r0
+   0x001037aa:	mrs	r3, CPSR
+   0x001037ae:	tst.w	r3, #80	@ 0x50
+   0x001037b2:	bne.n	0x1037b6
+   0x001037b4:	b.n	0x1037b4
+   0x001037b6:	ldr	r5, [r4, #8]
+   0x001037b8:	mrc	15, 0, r3, cr0, cr0, {5}
+   0x001037bc:	and.w	r3, r3, #3
+   0x001037c0:	ldrd	r0, r1, [r4]
+   0x001037c4:	add.w	r8, sp, #36	@ 0x24
+   0x001037c8:	ldr	r6, [pc, #200]	@ (0x103894)
+   0x001037ca:	subs	r7, #4
+   0x001037cc:	subs	r1, r1, r5
+   0x001037ce:	ldr	r2, [pc, #200]	@ (0x103898)
+   0x001037d0:	add	r0, r5
+   0x001037d2:	blx	r6
+   0x001037d4:	ldr	r3, [r4, #8]
+   0x001037d6:	add	r3, r0
+   0x001037d8:	str	r3, [r4, #8]
+   0x001037da:	mov.w	r3, #3556769792	@ 0xd4000000
+   0x001037de:	ldr	r5, [r3, #12]
+End of assembler dump.
+
+=== disas around 0x0010390C ===
+Dump of assembler code from 0x1038c0 to 0x103960:
+   0x001038c0:	stmdb	sp!, {r3, r4, r5, r6, r7, r8, r9, lr}
+   0x001038c4:	mov	r6, r0
+   0x001038c6:	ldr.w	r8, [pc, #52]	@ 0x1038fc
+   0x001038ca:	ldrb	r7, [r0, #0]
+   0x001038cc:	mov	r5, r0
+   0x001038ce:	ldr.w	r9, [pc, #48]	@ 0x103900
+   0x001038d2:	movs	r4, #0
+   0x001038d4:	adds	r3, r6, r7
+   0x001038d6:	cmp	r5, r3
+   0x001038d8:	bcc.n	0x1038e8
+   0x001038da:	cbz	r4, 0x1038e4
+   0x001038dc:	ldr	r3, [pc, #36]	@ (0x103904)
+   0x001038de:	movs	r2, #0
+   0x001038e0:	add	r3, r4
+   0x001038e2:	strb	r2, [r3, #15]
+   0x001038e4:	ldmia.w	sp!, {r3, r4, r5, r6, r7, r8, r9, pc}
+   0x001038e8:	rsb	r1, r4, #768	@ 0x300
+   0x001038ec:	add.w	r0, r8, r4
+   0x001038f0:	ldrb.w	r3, [r5], #1
+   0x001038f4:	ldr	r2, [pc, #16]	@ (0x103908)
+   0x001038f6:	blx	r9
+   0x001038f8:	add	r4, r0
+   0x001038fa:	b.n	0x1038d4
+   0x001038fc:	bge.n	0x103870
+   0x001038fe:	movs	r5, r2
+   0x00103900:	adds	r2, #241	@ 0xf1
+   0x00103902:	movs	r7, r1
+   0x00103904:	bge.n	0x103858
+   0x00103906:	movs	r5, r2
+   0x00103908:	blt.n	0x1038f8
+   0x0010390a:	movs	r0, r2
+   0x0010390c:	push	{r0, r1, r4, r5, r6, lr}
+   0x0010390e:	mrc	15, 0, r3, cr0, cr0, {5}
+   0x00103912:	and.w	r3, r3, #3
+   0x00103916:	cmp	r3, #0
+   0x00103918:	bne.n	0x10397a
+   0x0010391a:	bic.w	r3, r0, #256	@ 0x100
+   0x0010391e:	cmp	r3, #42	@ 0x2a
+   0x00103920:	beq.n	0x10392e
+   0x00103922:	movw	r3, #327	@ 0x147
+   0x00103926:	cmp	r0, r3
+   0x00103928:	beq.n	0x10392e
+   0x0010392a:	cmp	r0, #27
+   0x0010392c:	bne.n	0x10397a
+   0x0010392e:	ldr	r3, [pc, #80]	@ (0x103980)
+   0x00103930:	ldr	r4, [pc, #80]	@ (0x103984)
+   0x00103932:	ldr	r5, [r3, #0]
+   0x00103934:	b.n	0x103972
+   0x00103936:	ldr	r2, [pc, #80]	@ (0x103988)
+   0x00103938:	ldr.w	r6, [r2, r3, lsl #2]
+   0x0010393c:	adds	r0, r6, #4
+   0x0010393e:	bl	0x1038c0
+   0x00103942:	ldrb	r1, [r6, #2]
+   0x00103944:	ldr	r2, [pc, #68]	@ (0x10398c)
+   0x00103946:	movs	r0, #0
+   0x00103948:	ldr	r3, [pc, #68]	@ (0x103990)
+   0x0010394a:	ldr	r6, [pc, #72]	@ (0x103994)
+   0x0010394c:	cmp	r1, #1
+   0x0010394e:	it	eq
+   0x00103950:	moveq	r3, r2
+   0x00103952:	str	r3, [sp, #4]
+   0x00103954:	ldr	r3, [pc, #64]	@ (0x103998)
+   0x00103956:	movs	r1, #15
+   0x00103958:	str	r3, [sp, #0]
+   0x0010395a:	ldr	r2, [pc, #64]	@ (0x10399c)
+   0x0010395c:	ldr.w	r3, [r4, #784]	@ 0x310
+End of assembler dump.
+
+=== disas around 0x001039A0 ===
+Dump of assembler code from 0x103960 to 0x103a10:
+   0x00103960:	blx	r6
+   0x00103962:	ldr.w	r3, [r4, #784]	@ 0x310
+   0x00103966:	cmp	r3, #48	@ 0x30
+   0x00103968:	ite	le
+   0x0010396a:	addle	r3, #1
+   0x0010396c:	subgt	r3, #49	@ 0x31
+   0x0010396e:	str.w	r3, [r4, #784]	@ 0x310
+   0x00103972:	ldr.w	r3, [r4, #784]	@ 0x310
+   0x00103976:	cmp	r3, r5
+   0x00103978:	bne.n	0x103936
+   0x0010397a:	add	sp, #8
+   0x0010397c:	pop	{r4, r5, r6, pc}
+   0x0010397e:	nop
+   0x00103980:	ldrb	r0, [r1, #16]
+   0x00103982:	movs	r0, r0
+   0x00103984:	bge.n	0x1038d8
+   0x00103986:	movs	r5, r2
+   0x00103988:	lsrs	r4, r0, #27
+   0x0010398a:	movs	r0, r1
+   0x0010398c:	ldmia	r4, {r1, r2, r4, r7}
+   0x0010398e:	movs	r0, r2
+   0x00103990:	blt.n	0x10398c
+   0x00103992:	movs	r0, r2
+   0x00103994:	ldr	r5, [r5, #100]	@ 0x64
+   0x00103996:	svc	0
+   0x00103998:	bge.n	0x10390c
+   0x0010399a:	movs	r5, r2
+   0x0010399c:	bgt.n	0x1039a4
+   0x0010399e:	movs	r0, r2
+   0x001039a0:	movw	r3, #327	@ 0x147
+   0x001039a4:	push	{r0, r1, r4, r5, r6, lr}
+   0x001039a6:	cmp	r0, r3
+   0x001039a8:	bne.n	0x1039e6
+   0x001039aa:	mrc	15, 0, r6, cr0, cr0, {5}
+   0x001039ae:	and.w	r6, r6, #3
+   0x001039b2:	cbnz	r6, 0x1039e6
+   0x001039b4:	ldr	r4, [pc, #52]	@ (0x1039ec)
+   0x001039b6:	ldr	r2, [pc, #56]	@ (0x1039f0)
+   0x001039b8:	ldr.w	r3, [r4, #788]	@ 0x314
+   0x001039bc:	ldr	r5, [r2, #0]
+   0x001039be:	cmp	r3, r5
+   0x001039c0:	beq.n	0x1039e6
+   0x001039c2:	ldr	r2, [pc, #48]	@ (0x1039f4)
+   0x001039c4:	ldr.w	r0, [r2, r3, lsl #2]
+   0x001039c8:	adds	r0, #4
+   0x001039ca:	bl	0x1038c0
+   0x001039ce:	add.w	r3, r4, #16
+   0x001039d2:	str	r3, [sp, #0]
+   0x001039d4:	mov	r0, r6
+   0x001039d6:	ldr	r2, [pc, #32]	@ (0x1039f8)
+   0x001039d8:	movs	r1, #15
+   0x001039da:	ldr.w	r3, [r4, #788]	@ 0x314
+   0x001039de:	ldr	r6, [pc, #28]	@ (0x1039fc)
+   0x001039e0:	blx	r6
+   0x001039e2:	str.w	r5, [r4, #788]	@ 0x314
+   0x001039e6:	add	sp, #8
+   0x001039e8:	pop	{r4, r5, r6, pc}
+   0x001039ea:	nop
+   0x001039ec:	bge.n	0x103940
+   0x001039ee:	movs	r5, r2
+   0x001039f0:	ldrb	r0, [r0, #16]
+   0x001039f2:	movs	r0, r0
+   0x001039f4:	lsrs	r4, r0, #22
+   0x001039f6:	movs	r0, r1
+   0x001039f8:	bgt.n	0x103a30
+   0x001039fa:	movs	r0, r2
+   0x001039fc:	ldr	r5, [r5, #100]	@ 0x64
+   0x001039fe:	svc	0
+   0x00103a00:	push	{r4, r5, r6, lr}
+   0x00103a02:	mov.w	r3, #2097152	@ 0x200000
+   0x00103a06:	ldr	r4, [pc, #116]	@ (0x103a7c)
+   0x00103a08:	ldr	r5, [pc, #116]	@ (0x103a80)
+   0x00103a0a:	str	r3, [r4, #4]
+   0x00103a0c:	blx	r5
+   0x00103a0e:	ldr	r3, [pc, #116]	@ (0x103a84)
+End of assembler dump.
+
+=== ROM words 0xE0040010..0xE0040020 (the needle) ===
+0xe0040010:	0x46850000	0x5fb0ee10	0x000ff015	0xf241d10a
+
+=== find _reloc copy of firmware_entry in ML image ===
+Pattern not found.
+
+=== also search full RAM below 0x400000 ===
+0x15505c
+1 pattern found.
+[Inferior 1 (process 1) detached]

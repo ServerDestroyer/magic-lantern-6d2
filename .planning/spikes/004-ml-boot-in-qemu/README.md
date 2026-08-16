@@ -352,8 +352,11 @@ This is a proposal only; validating it requires making the stall reproducible
 first (e.g. stress-boot in a loop, or force adversarial vCPU scheduling with
 `-accel tcg,thread=single` vs default MTTCG).
 
-Scratch artifacts kept: `/home/chris/ml6d2/scratch-ml-spike004/` (full ml
-copy + plain build + card images; `old-bin/` holds the exact spike-004 binary,
-its ELF, sym and card images). Probe logs in this session's scratchpad
-(`qemu-run-oldbin.log`, `qemu-run-newbuild-control.log`, `rep1..3.log`,
-`probe_oldbin.out`).
+Scratch artifacts: the probe logs are preserved permanently in `evidence/`
+(renamed `.log` → `.txt` because `.gitignore` ignores `*.log`):
+`qemu-run-oldbin.txt`, `qemu-run-newbuild-control.txt`, `rep1..3.txt`,
+`probe_oldbin.txt`. The full scratch tree
+`/home/chris/ml6d2/scratch-ml-spike004/` (ml copy + builds + card images +
+`old-bin/` with the exact spike-004 binary) is scheduled for deletion in the
+2026-08-15 evening housekeeping pass — the analysis above and `evidence/`
+are the durable record.

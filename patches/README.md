@@ -9,8 +9,8 @@ Patches live here instead.
 | 0001 | `ml/` | MOV time limit, debug flags, two source fixes | **Tested on the real camera** — but SPLIT before upstreaming: Track A's A/B measured the three `FEATURE_SHOW_*` flags causing a 0/0 memory pool at `log_start()` in `CONFIG_STARTUP_LOG` builds (MOV limit exonerated; normal boots unaffected). Ship the MOV-limit + source-fix half alone; hold the SHOW flags until the pool interaction is understood. |
 | 0002 | `ml/` | `CONFIG_STARTUP_LOG` MPU-spell capture build | Working in QEMU when combined with 0005; body package ready |
 | 0003 | `qemu-eos/` | `outils.py`: honour `ML_PLATFORM_DIR` | Works; upstreamable one-liner |
-| 0004 | `qemu-eos/` | 6D2 `debugmsg.gdb`: EstimatedSize workaround + fix wrong `assert_log` address | **Verified live in QEMU**; both parts upstreamable |
-| 0004 | `ml/` | `prop_request_change_wait`: skip timeout on denied writes (numbering collision with the qemu-eos 0004, kept as-is) | Applied in tree |
+| 0004b | `qemu-eos/` | 6D2 `debugmsg.gdb`: EstimatedSize workaround + fix wrong `assert_log` address (renamed from 0004 to resolve the numbering collision; 0006 is reserved by spike 006's diagnostic build) | **Verified live in QEMU**; both parts upstreamable |
+| 0004 | `ml/` | `prop_request_change_wait`: skip timeout on denied writes — **hardware-confirmed 2026-08-15 16:12** (raw-video livelock cured, 25-frame MLV recorded) | Applied in tree; PR-2 ready to post |
 | 0005 | `ml/` | Capture build: disable the three `FEATURE_SHOW_*` flags (they zero the allocator pool — spike 005 A/B) | **Measured in QEMU**, both legs |
 
 ## Applying
@@ -122,7 +122,7 @@ path. One-line env override, upstreamable as-is.
 cd qemu-eos && git apply ../patches/0003-qemu-eos-outils-ML_PLATFORM_DIR.patch
 ```
 
-## 0004 — 6D2 `debugmsg.gdb`: EstimatedSize workaround + wrong `assert_log` address
+## 0004b — 6D2 `debugmsg.gdb`: EstimatedSize workaround + wrong `assert_log` address
 
 Against `qemu-eos` @ `4b667a1d3c` (branch `qemu-eos-v4.2.1`).
 **Verified live in QEMU**, not by inspection.
