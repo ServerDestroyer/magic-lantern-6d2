@@ -189,17 +189,91 @@ body log contains raw non-UTF-8 bytes — strip NULs and invalid sequences
 before feeding `extract_init_spells.py`. Candidate for upstreaming to
 qemu-eos together with 0003.
 
-## 0006 — raw-video diagnostics for spike 006 (Session 4 card build)
+### rev 2 — movie-capture replies merged (2026-08-15)
+
+Strict addition per `.planning/spikes/005-mpu-spell-capture/movie-spells-analysis.md`
+§5.2: 13 movie-only *active* replies appended to the existing photo-mode entries
+(matched by request spell) — spell #2 `PROP_CARD2_EXISTS`; #20 `PROP_PICTURE_STYLE`;
+spell #21 `PROP_ISO`, `PROP_HIGHISO_NOISE_REDUCTION`,
+`PROP_HTP`, `PROP_CARD1/2_IMAGE_QUALITY`; #30 `PROP_AFFRAME_ENABLE_SETTING`, `PROP 80030075`,
+`PROP_AFPOINT`, `PROP_AF_SELECT_FOCUS_AREA`; #36 `PROP 8004005F`, `PROP 80040060`.
+No new request entries, no environmental/noise replies (temperature, battery, GPS,
+shot counter, the all-zero movie Lens group), and the mode selectors
+(`PROP_FIXED_MOVIE`, `PROP_LIVE_VIEW_MOVIE_SELECT`) stay at their photo values —
+QEMU still boots as photo mode. Regression test (120 s, `-d debugmsg`): 472 stderr
+lines vs 469 baseline, zero `ASSERT` / `Irregular TotalSheets` / `ErrorSend`, same
+stopping point (NFCMgr/DbgMgr init). Two new benign
+`non-empty spell #N has duplicate(s)` warnings for the now-non-empty #20/#36 —
+`mpu_interpret_command()` resumes matching from the previous spell, so the
+duplicate pairs are consumed in order. The new replies are not exercised within
+the current boot window (the ICU never issues those requests before the stall);
+they are coverage for when it does.
+
+## 0006 — raw-video diagnostics for spike 006 (Session 4/5 card builds)
+
+### rev 1 (session 4, superseded)
 
 Four edits from `spikes/006-rawvideo-memory/README.md` §NEXT TEST: (1)
-mlv_lite.c:3466 un-shadow `fps` — real upstream bug, outer `fps` stuck at 1
+mlv_lite.c un-shadow `fps` — real upstream bug, outer `fps` stuck at 1
 feeding `overflow_time`; (2) `raw inactive: lv=%d movie=%d gui=%d` printf in
 the free branch; (3) `[probe] N MB: ok|TIMEOUT (T ms)` timing around each
 `shoot_malloc_autodetect` probe in exmem.c; (4) the suites-NULL re-arm fix,
-**`#if 0`'d** until step 1 confirms the dead state. Built 2026-08-15 evening
-(clean rebuild; note the module staleness trap below), diagnostic strings
-verified present in `build/zip` binaries: autoexec `c6fc4936…`, mlv_lite.mo
-`33a57525…`. **Build-system trap:** `make clean` in `platform/6D2.111` does
-NOT rebuild modules — `modules/build/*.mo` persist and get re-copied with
-fresh mtimes (stale content, fresh timestamp). Force with
-`rm modules/build/<mod>.mo modules/build/default_modules_complete`.
+**`#if 0`'d** until step 1 confirms the dead state. Built 2026-08-15 evening,
+autoexec `c6fc4936…`, mlv_lite.mo `33a57525…`.
+
+Session 4 evidence (`evidence/photo-session-2-18h25.md`) showed edits (2) and
+(3) produced no usable data: 34 `[probe]` lines self-flushed the 21-line
+console (`CONSOLE_H`, src/console.c:19), and `No memory suites.` spam buried
+everything else. Hence rev 2.
+
+### rev 2 (session 5, current)
+
+Keeps rev 1's edits (1), (2) and the `#if 0`'d (4) unchanged; replaces (3)
+and adds the real fix for spike-006 bug 3.
+
+- **exmem.c:217-259** — `shoot_malloc_autodetect()` now tracks slowest step and
+  its size across the probe loop and prints **one** summary line afterwards:
+  `[probe] max %dMB steps %d slowest %dms@%dMB last %s` (last = `ok`/`TIMEOUT`
+  for the step that ended the loop). Per-step `get_ms_clock()` measurement is
+  unchanged; only the printing moved out of the loop.
+- **mlv_lite.c:1575-1591** — the `No memory suites.` dead-state message now
+  carries the state needed to diagnose why no realloc happens, and is
+  rate-limited to once per second so it no longer floods the console:
+  `No memory suites. lv=%d movie=%d gui=%d rawact=%d rec=%d suites=%d/%d`
+  (`rawact` = `raw_video_enabled && lv && is_movie_mode()`, `rec` =
+  `raw_recording_state`).
+- **mlv_lite.c:381-386, 2944-2951, 3242-3259, 3436-3437** — measured-fps stamp
+  in the MLVI header. The vsync hook records the first/last VIDF timestamp and
+  a frame counter (reset at record start); `finish_chunk()` recomputes
+  `sourceFpsNom = (frames-1) * 1e9 / (last_us - first_us)`, `sourceFpsDenom =
+  1000`, guarded on `frames >= 2 && last > first` and a `< 1000 fps` sanity
+  bound, with `int64_t` intermediates. This overrides the value
+  `init_mlv_chunk_headers()` wrote from `fps_get_current_x1000()`, which on the
+  6D2 derives from an unmeasured `TG_FREQ_BASE`/timer A (reg A cannot be read
+  back at all — see `platform/6D2.111/fps-engio_per_cam.c`) and returned
+  215.430 fps for a 59.94p take and 21.545 for a 23.976p take. The formula was
+  checked against the three analysed recordings in
+  `evidence/mlv-analysis-2.md` and reproduces their mean-Δts fps exactly
+  (23976, 59954, 59945). Upstream-quality — not gated behind spike flags.
+
+Built 2026-08-15 18:50 local, `ML_MODULES="raw_video/mlv_lite file_man bench
+dual_iso"`, `-Werror` clean. Strings verified in the **staged** `build/zip`
+artifacts. md5: `zip/autoexec.bin` `54eb1339b8812bebcd9d2a2472309d7c`,
+`zip/ML/modules/mlv_lite.mo` `ca38b52a268c37d94e3a899d88f6f554`.
+
+**Build-system trap (worse than previously recorded).** `make clean` in
+`platform/6D2.111` does NOT rebuild modules, and clearing only
+`modules/build/` is *not enough either*: each module has its own
+`modules/<path>/build/module_complete` marker, and while that exists the
+module is relinked from a stale `.o` and copied onward with a fresh mtime —
+identical size, identical content, new timestamp. A rev-2 build done that way
+silently shipped the rev-1 `mlv_lite.mo`. Force a real module rebuild with:
+
+```sh
+rm -f modules/<path>/build/<mod>.* modules/<path>/build/module_complete \
+      modules/build/<mod>.* modules/build/default_modules_complete \
+      platform/6D2.111/build/modules/<mod>.mo \
+      platform/6D2.111/build/zip/ML/modules/<mod>.mo
+```
+
+and always verify with `strings` on `build/zip/…`, never on the source tree.

@@ -53,6 +53,42 @@ This single 30-second run unblocks: real 6D2 MPU spells → qemu-eos 6D2 support
 After Session 2: `tools/sync_card.sh <card-mount>` (defaults back to the live
 `ml/platform/6D2.111/build/zip`). Card is then back on the raw-video debug build.
 
+## Session 4b — spike 006 retest with rev-2 instrumentation (READY, card sync pending)
+
+Session 4 (2026-08-15 18:25) ran the correct build but only 1 of 4 tests
+yielded data — two tests were unrunnable by construction (34 probe lines
+self-evicted from the 21-line console; `raw inactive:` guard already false at
+menu time) and 25p was impossible (camera is NTSC). All fixed in patch 0006
+rev 2 (single `[probe]` summary line; `No memory suites.` now prints
+`lv/movie/gui/rawact/rec/suites` at 1 Hz; measured-fps MLVI header stamp).
+Autoexec md5 `54eb1339…`, mlv_lite.mo `ca38b52a…`. Instructions below use the
+control names from `docs/6D2_CONTROLS.md`.
+
+Prep (camera, once): MENU → `[z4]` tab → **Movie Servo AF** → **Disable**
+(default is Enable and it refocuses mid-take).
+
+1. **Dead-state:** Flip the **Live View shooting / Movie shooting switch**
+   (the collar around START/STOP on the back) to the **movie-camera icon**.
+   Movie rec. size **1920 59.94p**. Erase button (trash icon) → ML menu →
+   Movie → RAW video ON → Erase again to close. Press **START/STOP** to
+   record, let it stop by itself, then **immediately press START/STOP again
+   touching nothing else**. Photograph the console — the money line is
+   `No memory suites. lv=… movie=… gui=… rawact=… rec=… suites=0/0`.
+2. **Shrink probe:** Press the **Erase** button to open the ML menu, then
+   again to close, five times. Photograph `Shoot memory: X MB` and the single
+   `[probe] max …MB steps … slowest …ms@…MB last …` line each cycle.
+3. **True 25p:** MENU → yellow **`[53]` Set-up 3** → **Video system** →
+   **For PAL**; then MENU → red **`[z1]`** → **Movie rec. size** → **1920
+   25.00p** (it resets when Video system changes). Record raw ~10 s.
+   Afterwards switch Video system back to **For NTSC**.
+4. **Free-branch flag:** With RAW video still ON and not recording, flip the
+   **Live View shooting / Movie shooting switch back to the still-camera
+   icon**. Photograph the `raw inactive: lv=… movie=… gui=…` line (this is
+   the moment the guard is true — NOT when opening the menu).
+
+Bring back: console photos into `Pics of debuging/` + all new `.MLV` files.
+The 25p MLV also validates the new measured-fps header (expect ≈25000/1000).
+
 ## Session 4 — raw video follow-up (spike 006 next-test)
 
 After Session 2/3 — spell capture stays first priority. Needs a PC build first:

@@ -1,8 +1,44 @@
 diff --git a/modules/raw_video/mlv_lite/mlv_lite.c b/modules/raw_video/mlv_lite/mlv_lite.c
-index d05b83ffc..c78718b9c 100644
+index d05b83ffc..ed476e701 100644
 --- a/modules/raw_video/mlv_lite/mlv_lite.c
 +++ b/modules/raw_video/mlv_lite/mlv_lite.c
-@@ -2056,6 +2056,8 @@ unsigned int raw_rec_polling_cbr(unsigned int unused)
+@@ -374,6 +374,13 @@ static GUARDED_BY(RawRecTask)   mlv_rtci_hdr_t rtci_hdr;
+ static GUARDED_BY(RawRecTask)   mlv_wbal_hdr_t wbal_hdr;
+ static GUARDED_BY(LiveViewTask) mlv_vidf_hdr_t vidf_hdr;
+ static GUARDED_BY(RawRecTask)   uint64_t mlv_start_timestamp = 0;
++
++/* frame timing measured from the VIDF timestamps, used to stamp the MLVI header.
++ * Written by the vsync hook, read by RawRecTask when finishing a chunk;
++ * deliberately unguarded, as a torn read only skews the fps estimate slightly. */
++static uint64_t vidf_ts_first = 0;      /* first VIDF timestamp, us since rec start */
++static uint64_t vidf_ts_last  = 0;      /* most recent VIDF timestamp */
++static int      vidf_ts_count = 0;      /* how many VIDF timestamps we stamped */
+        GUARDED_BY(RawRecTask)   uint32_t raw_rec_trace_ctx = TRACE_ERROR;
+ 
+ static int raw_rec_should_preview(void);
+@@ -1565,7 +1572,20 @@ int setup_buffers()
+ 
+     if (!shoot_mem_suite && !srm_mem_suite)
+     {
+-        printf("No memory suites.\n");
++        /* spike 006 step 1: this is polled at 250ms, so unthrottled it fills the
++         * 21-line console in 5s and hides everything around it. Print at most once
++         * a second, and dump the state that decides whether a realloc can happen. */
++        static int last_no_suites_print = 0;
++        int now = get_ms_clock();
++        if (!last_no_suites_print || (unsigned)(now - last_no_suites_print) >= 1000)
++        {
++            last_no_suites_print = now;
++            printf("No memory suites. lv=%d movie=%d gui=%d rawact=%d rec=%d suites=%d/%d\n",
++                lv, is_movie_mode(), gui_state,
++                (raw_video_enabled && lv && is_movie_mode()) ? 1 : 0,
++                raw_recording_state,
++                shoot_mem_suite ? 1 : 0, srm_mem_suite ? 1 : 0);
++        }
+         return 0;
+     }
+ 
+@@ -2056,6 +2076,8 @@ unsigned int raw_rec_polling_cbr(unsigned int unused)
          /* raw video turned off? free any resources we might have got */
          if (shoot_mem_suite || srm_mem_suite)
          {
@@ -11,7 +47,7 @@ index d05b83ffc..c78718b9c 100644
              gui_uilock(UILOCK_EVERYTHING);
              take_semaphore(settings_sem, 0);
              free_buffers();
-@@ -2065,6 +2067,14 @@ unsigned int raw_rec_polling_cbr(unsigned int unused)
+@@ -2065,6 +2087,14 @@ unsigned int raw_rec_polling_cbr(unsigned int unused)
          return 0;
      }
  
@@ -26,7 +62,54 @@ index d05b83ffc..c78718b9c 100644
      /* reallocate buffers if needed (only if not recording) */
      if (realloc && (RAW_IS_IDLE || RAW_IS_PREPARING) && gui_state == GUISTATE_IDLE)
      {
-@@ -3463,7 +3473,7 @@ void raw_video_rec_task(uint32_t card_index)
+@@ -2913,6 +2943,11 @@ void process_frame(int next_fullsize_buffer_pos)
+     /* set VIDF metadata for this frame */
+     vidf_hdr.frameNumber = slots[capture_slot].frame_number - 1;
+     mlv_set_timestamp((mlv_hdr_t*)&vidf_hdr, mlv_start_timestamp);
++    /* remember the span of frame timestamps, so finish_chunk() can stamp a
++     * measured fps into the MLVI header (see comment there) */
++    if (!vidf_ts_count) vidf_ts_first = vidf_hdr.timestamp;
++    vidf_ts_last = vidf_hdr.timestamp;
++    vidf_ts_count++;
+     vidf_hdr.cropPosX = (skip_x + 7) & ~7;
+     vidf_hdr.cropPosY = skip_y & ~1;
+     vidf_hdr.panPosX = skip_x;
+@@ -3204,7 +3239,24 @@ static REQUIRES(RawRecTask)
+ void finish_chunk(FILE *f, int card_index)
+ {
+     file_hdr[card_index].videoFrameCount = chunk_frame_count[card_index];
+-    
++
++    /* Stamp the fps we actually measured, overriding the value written when the
++     * header was created. That one comes from fps_get_current_x1000(), which
++     * derives the rate from the FPS timer registers; on bodies whose TG_FREQ_BASE
++     * and timer A were never measured (e.g. 6D2, where reg A cannot be read back
++     * at all) it returns nonsense - 215.430 fps for a 59.94p take. The VIDF
++     * timestamps come from get_us_clock() and are good to ~1%, so prefer them. */
++    if (vidf_ts_count >= 2 && vidf_ts_last > vidf_ts_first)
++    {
++        int64_t fps_x1000 = (int64_t)(vidf_ts_count - 1) * 1000000000LL
++                          / (int64_t)(vidf_ts_last - vidf_ts_first);
++        if (fps_x1000 > 0 && fps_x1000 < 1000000)
++        {
++            file_hdr[card_index].sourceFpsNom = (uint32_t) fps_x1000;
++            file_hdr[card_index].sourceFpsDenom = 1000;
++        }
++    }
++
+     /* call the CBRs which may update fields */
+     mlv_rec_call_cbr(MLV_REC_EVENT_BLOCK, (mlv_hdr_t *)&file_hdr[card_index]);
+     
+@@ -3381,6 +3433,8 @@ void raw_video_rec_task(uint32_t card_index)
+         for (int t = 0; t < CARD_COUNT; ++t) {
+             chunk_frame_count[t] = 0;
+         }
++        vidf_ts_first = vidf_ts_last = 0;
++        vidf_ts_count = 0;
+         mlv_chunk = 0;
+         buffer_full = 0;
+ 
+@@ -3463,7 +3517,7 @@ void raw_video_rec_task(uint32_t card_index)
              beep();
          }
  
@@ -36,18 +119,50 @@ index d05b83ffc..c78718b9c 100644
              goto cleanup;
  
 diff --git a/src/exmem.c b/src/exmem.c
-index e3d3446c1..aeab234ad 100644
+index e3d3446c1..6f5cde0b4 100644
 --- a/src/exmem.c
 +++ b/src/exmem.c
-@@ -218,7 +218,11 @@ size_t shoot_malloc_autodetect()
+@@ -214,11 +214,30 @@ size_t shoot_malloc_autodetect()
+     if (backup == NULL)
+         return max_size;
+ 
++    /* spike 006 step 2: a slow probe would mean the allocator timed out and
++     * truncated the autodetect. One line per step (34 of them) overflows the
++     * 21-line ML console before it can be read, so only summarise afterwards. */
++    int probe_steps = 0;
++    int probe_slowest_ms = 0;
++    int probe_slowest_mb = 0;
++    int probe_last_ok = 0;
++
+     for (int size_mb = 4; size_mb < 1024; size_mb += 4)
      {
          int tested_size = size_mb * 1024 * 1024;
          //qprintf("[shoot_malloc] trying %s\n", format_memory_size(tested_size));
 +        int t0 = get_ms_clock();
          struct memSuite *testSuite = shoot_malloc_suite_int(tested_size);
-+        int t1 = get_ms_clock();
-+        /* spike 006 step 2: slow probe = allocator timeout truncating autodetect */
-+        printf("[probe] %d MB: %s (%d ms)\n", tested_size >> 20, testSuite ? "ok" : "TIMEOUT", t1 - t0);
++        int dt = get_ms_clock() - t0;
++
++        probe_steps++;
++        probe_last_ok = (testSuite != NULL);
++        if (dt > probe_slowest_ms)
++        {
++            probe_slowest_ms = dt;
++            probe_slowest_mb = size_mb;
++        }
++
          if (testSuite)
          {
              /* leave 1MB unallocated, just in case */
+@@ -233,7 +252,11 @@ size_t shoot_malloc_autodetect()
+     }
+     /* now free the backup suite. this causes the queued allocation before to get finished. as we timed out, it will get freed immediately in exmem.c:allocCBR */
+     _shoot_free_suite(backup);
+-    
++
++    printf("[probe] max %dMB steps %d slowest %dms@%dMB last %s\n",
++        (int)(max_size >> 20), probe_steps, probe_slowest_ms, probe_slowest_mb,
++        probe_last_ok ? "ok" : "TIMEOUT");
++
+     //qprintf("[shoot_malloc] autodetected size: %s\n", format_memory_size(max_size));
+     return max_size;
+ }
