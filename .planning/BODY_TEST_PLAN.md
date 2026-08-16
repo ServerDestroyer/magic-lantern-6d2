@@ -14,7 +14,7 @@ Results (full record: `spikes/006-rawvideo-memory/README.md`):
 1. Boot sanity: PASS — ML loaded, mlv_lite present, RAW video `ON, 1920x1080 1.75x`.
 2. **Patch 0004 confirmed on hardware** — UILock denials printed (`... (!!!)`),
    no livelock, camera responsive throughout, battery never pulled.
-3. **First-ever ML raw video on a 6D2**: `footage/M15-1612.MLV`, 25 valid
+3. **ML raw video on the body** (this line previously claimed "first-ever"; retracted 2026-08-16): `footage/M15-1612.MLV`, 25 valid
    1920x1080 14-bit frames, properly finalized, pixel-valid. "Early stop (8)"
    is buffer-full physics (217 MB/s demand vs UHS-I), not a bug.
 4. MOV/MP4 time limit: menu item present (180 min); 1-min auto-stop not re-run

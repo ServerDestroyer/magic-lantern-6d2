@@ -16,7 +16,7 @@ newer fixes exist).
    src/gui-common.c:690); no livelock, camera responsive throughout, battery never
    pulled. The 0x41000001 writes are srm_shutter_lock (src/exmem.c:479-484) —
    meaning no UI locking actually protects SRM alloc/record on this port (benign so far).
-2. **First-ever ML raw video on a 6D2.** `footage/M15-1612.MLV`
+2. **ML raw video on the body** (previously claimed "first-ever"; retracted 2026-08-16). `footage/M15-1612.MLV`
    (md5 d83961297c2a6d78255ea1129d7b8b5c), 90,727,424 bytes = 25 × 3,629,056 + 1,024
    exactly: MLV v2.0, 25 valid uncompressed 14-bit 1920x1080 VIDF frames (0..24),
    properly finalized (videoFrameCount=25), pixel-valid (frames 0/12/24 decode clean).
